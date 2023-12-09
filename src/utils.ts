@@ -3,7 +3,7 @@ import * as cliProgress from "cli-progress";
 import * as fs from "fs";
 import * as path from "path";
 import WebTorrent from "webtorrent";
-import { TorrentData } from "./types.js";
+import { MetaData, TorrentData } from "./types.js";
 
 /**
  * Build a URL to the Nyaa search results page for the given uploader and query.
@@ -101,73 +101,6 @@ const filterForExistingEpisodes = (
 };
 
 /**
- * Get the names of all folders that contain a nyaa_meta.json file.
- * @param directory path to the root directory
- * @returns list of folder names
- */
-export const getFoldersWithNyaaMetaFile = (directory: string): string[] => {
-  try {
-    const foldersWithNyaaMeta = fs.readdirSync(directory).filter((folder) => {
-      const folderPath = path.join(directory, folder);
-      const nyaaMetaPath = path.join(folderPath, "nyaa_meta.json");
-      return (
-        fs.existsSync(nyaaMetaPath) && fs.statSync(folderPath).isDirectory()
-      );
-    });
-
-    return foldersWithNyaaMeta;
-  } catch (error) {
-    console.error("Error reading folders:", error);
-    return [];
-  }
-};
-
-/**
- * Get the list of torrents to download.
- * @param rootFolderPath path to the root folder
- * @param folders list of folders to check
- * @returns list of torrents to download
- */
-export const getDownloadList = async (
-  rootFolderPath: string,
-  folders: string[],
-): Promise<TorrentData[]> => {
-  let downloads: TorrentData[] = [];
-
-  await Promise.all(
-    folders.map(async (folder) => {
-      const folderPath = path.join(rootFolderPath, folder);
-      const nyaaMetaPath = path.join(folderPath, "nyaa_meta.json");
-
-      try {
-        const jsonData = JSON.parse(fs.readFileSync(nyaaMetaPath, "utf-8"));
-
-        // Extract values from JSON
-        const { uploader, query } = jsonData;
-
-        // Build the URL
-        const nyaaSearchUrl = buildNyaaSearchUrl(uploader, query);
-
-        // Scrape Nyaa search results
-        const results = await scrapeNyaaSearchResults(nyaaSearchUrl);
-
-        // Filter entries with corresponding episodes
-        const filteredResults = filterForExistingEpisodes(results, folderPath);
-
-        // Add filtered results to the array
-        downloads = downloads.concat(filteredResults);
-      } catch (error) {
-        console.error(
-          `Error reading JSON file or building URL for folder ${folder}:`,
-          error,
-        );
-      }
-    }),
-  );
-  return downloads;
-};
-
-/**
  * Download the torrent file for the given magnet link.
  * @param client WebTorrent client
  * @param magnetLink magnet link to the torrent file
@@ -203,36 +136,79 @@ const downloadTorrent = async (
 };
 
 /**
- * Download all torrents in the given list.
- * @param downloads list of torrents to download
+ * Get the metadata from the meta file.
+ * @param filePath path to the meta file
+ * @returns metadata object
+ */
+export const getMetaFromFile = (filePath: string): MetaData[] => {
+  try {
+    const jsonData: MetaData[] = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    return jsonData;
+  } catch (error) {
+    console.error("Error reading meta file:", error);
+    return [];
+  }
+};
+
+/**
+ * Get the list of torrents to download for each metadata entry.
+ * @param rootFolderPath path to the root folder
+ * @param meta list of metadata entries
  * @returns Promise that resolves when all torrents are downloaded
  */
-export const downloadAll = async (downloads: TorrentData[]): Promise<void> => {
+export const handleDownloadingNewEpisodes = async (
+  rootFolderPath: string,
+  meta: MetaData[],
+): Promise<void> => {
   const client = new WebTorrent();
   const multiBar = new cliProgress.MultiBar(
     {
       clearOnComplete: false,
       hideCursor: true,
-      format: "[{bar}] {filename} | {percentage}% | ETA: {eta}s",
+      format: "[{bar}] {filename} | {percentage}%",
     },
     cliProgress.Presets.shades_classic,
   );
 
-  console.log("Episode to Download:", downloads);
-
-  const downloadPromises = downloads.map(({ magnetLink, path }) => {
-    if (magnetLink && path) {
-      return downloadTorrent(client, multiBar, magnetLink, path);
+  // Iterate through each metadata entry
+  for (const entry of meta) {
+    // Skip completed entries
+    if (entry.complete) {
+      console.log(`${entry.query} - already complete.`);
+      continue;
     }
-    return Promise.resolve();
-  });
 
-  try {
-    await Promise.all(downloadPromises);
-  } catch (error) {
-    console.error("Error downloading torrents:", error);
-  } finally {
-    multiBar.stop();
-    client.destroy();
+    const folderPath = path.join(rootFolderPath, entry.folder);
+
+    try {
+      // Build the URL
+      const nyaaSearchUrl = buildNyaaSearchUrl(entry.uploader, entry.query);
+
+      // Scrape Nyaa search results
+      const results = await scrapeNyaaSearchResults(nyaaSearchUrl);
+
+      // Filter entries with corresponding episodes
+      const filteredResults = filterForExistingEpisodes(results, folderPath);
+
+      console.log(`${entry.query} - new episodes: `, filteredResults.length);
+
+      // Download torrents for this query
+      await Promise.all(
+        filteredResults.map(({ magnetLink, path }) => {
+          if (magnetLink && path) {
+            return downloadTorrent(client, multiBar, magnetLink, path);
+          }
+          return Promise.resolve();
+        }),
+      );
+    } catch (error) {
+      console.error(
+        `Error building URL or handling episodes for ${entry.query}:`,
+        error,
+      );
+    }
   }
+
+  multiBar.stop();
+  client.destroy();
 };

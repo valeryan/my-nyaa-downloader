@@ -10,3 +10,17 @@ export type MetaData = {
   query: string;
   complete: boolean;
 };
+
+export type SmtpConfig = {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  password: string;
+};
+
+export type AppConfig = {
+  smtp: SmtpConfig;
+  reportEmail: string;
+  fromEmail: string;
+};

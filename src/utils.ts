@@ -1,9 +1,13 @@
 import { load } from "cheerio";
 import * as cliProgress from "cli-progress";
 import * as fs from "fs";
+import nodemailer from "nodemailer";
 import * as path from "path";
 import WebTorrent from "webtorrent";
-import { MetaData, TorrentData } from "./types.js";
+import { getAppConfig } from "./configuration.ts";
+import { MetaData, TorrentData } from "./types.ts";
+
+const appConfig = getAppConfig();
 
 /**
  * Build a URL to the Nyaa search results page for the given uploader and query.
@@ -136,6 +140,50 @@ const downloadTorrent = async (
 };
 
 /**
+ * Function to send email report with the collected information.
+ * @param seriesData List of series data with new episodes downloaded
+ */
+const sendEmailReport = async (
+  seriesData: { title: string; newEpisodes: number }[],
+) => {
+  const transporter = nodemailer.createTransport({
+    host: appConfig.smtp.host,
+    port: appConfig.smtp.port,
+    secure: appConfig.smtp.secure,
+    auth: {
+      user: appConfig.smtp.user,
+      pass: appConfig.smtp.password,
+    },
+  });
+
+  const emailBody = `
+  <h1>Nyaa Download Report</h1>
+  <p>The following series have new episodes:</p>
+  <ul>
+    ${seriesData
+      .map(
+        ({ title, newEpisodes }) =>
+          `<li>${title}: ${newEpisodes} new episode(s)</li>`,
+      )
+      .join("")}
+  </ul>`;
+
+  const mailOptions = {
+    from: appConfig.fromEmail,
+    to: appConfig.reportEmail,
+    subject: "New Episodes Downloaded Report",
+    html: emailBody,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log("Email report sent successfully.");
+  } catch (error) {
+    console.error("Error sending email report:", error);
+  }
+};
+
+/**
  * Get the metadata from the meta file.
  * @param filePath path to the meta file
  * @returns metadata object
@@ -160,15 +208,7 @@ export const handleDownloadingNewEpisodes = async (
   rootFolderPath: string,
   meta: MetaData[],
 ): Promise<void> => {
-  const client = new WebTorrent();
-  const multiBar = new cliProgress.MultiBar(
-    {
-      clearOnComplete: false,
-      hideCursor: true,
-      format: "[{bar}] {filename} | {percentage}%",
-    },
-    cliProgress.Presets.shades_classic,
-  );
+  const downloadTracker: { title: string; newEpisodes: number }[] = [];
 
   // Iterate through each metadata entry
   for (const entry of meta) {
@@ -180,6 +220,9 @@ export const handleDownloadingNewEpisodes = async (
 
     const folderPath = path.join(rootFolderPath, entry.folder);
 
+    let client: WebTorrent.Instance | null = null;
+    let multiBar: cliProgress.MultiBar | null = null;
+
     try {
       // Build the URL
       const nyaaSearchUrl = buildNyaaSearchUrl(entry.uploader, entry.query);
@@ -190,25 +233,60 @@ export const handleDownloadingNewEpisodes = async (
       // Filter entries with corresponding episodes
       const filteredResults = filterForExistingEpisodes(results, folderPath);
 
-      console.log(`${entry.query} - new episodes: `, filteredResults.length);
+      const newEpisodes = filteredResults.length;
+      console.log(`${entry.query} - new episodes: ${newEpisodes}`);
 
-      // Download torrents for this query
-      await Promise.all(
-        filteredResults.map(({ magnetLink, path }) => {
-          if (magnetLink && path) {
-            return downloadTorrent(client, multiBar, magnetLink, path);
-          }
-          return Promise.resolve();
-        }),
-      );
+      if (newEpisodes > 0) {
+        client = new WebTorrent();
+        multiBar = new cliProgress.MultiBar(
+          {
+            clearOnComplete: false,
+            hideCursor: true,
+            format: "[{bar}] {filename} | {percentage}% ",
+          },
+          cliProgress.Presets.shades_classic,
+        );
+
+        // Download torrents for this query
+        await Promise.all(
+          filteredResults.map(({ magnetLink, path }) => {
+            if (magnetLink && path) {
+              return downloadTorrent(client!, multiBar!, magnetLink, path);
+            }
+            return Promise.resolve();
+          }),
+        );
+
+        // Tear down the progress bar and WebTorrent client
+        multiBar.stop();
+        multiBar = null;
+        client.destroy();
+        client = null;
+
+        // Add the series and new episode count to the download tracker
+        downloadTracker.push({
+          title: entry.query,
+          newEpisodes: newEpisodes,
+        });
+      }
     } catch (error) {
       console.error(
         `Error building URL or handling episodes for ${entry.query}:`,
         error,
       );
+
+      if (multiBar) {
+        multiBar.stop();
+      }
+
+      if (client) {
+        client.destroy();
+      }
     }
   }
 
-  multiBar.stop();
-  client.destroy();
+  // Send email report with the collected information
+  if (downloadTracker.length > 0) {
+    await sendEmailReport(downloadTracker);
+  }
 };

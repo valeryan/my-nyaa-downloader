@@ -5,7 +5,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node --no-warnings --loader ts-node/esm src/index.ts",
+    "anime": "concurrently --raw npm:anime:*",
+    "anime:run": "node --no-warnings --loader ts-node/esm src/index.ts anime",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -14,21 +15,27 @@
   "dependencies": {
     "cheerio": "^1.0.0-rc.12",
     "cli-progress": "^3.12.0",
-    "ts-node": "^10.9.1",
+    "dotenv": "^16.3.1",
+    "nodemailer": "^6.9.7",
     "webtorrent": "^2.1.30"
   },
   "devDependencies": {
     "@types/cli-progress": "^3.11.5",
-    "@types/node": "^20.10.3",
+    "@types/node": "^20.10.4",
+    "@types/nodemailer": "^6.4.14",
     "@types/webtorrent": "^0.109.7",
     "@typescript-eslint/eslint-plugin": "^6.13.2",
     "@typescript-eslint/parser": "^6.13.2",
+    "concurrently": "^8.2.2",
     "eslint": "^8.55.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-import": "^2.29.0",
     "prettier": "^3.1.0",
     "prettier-plugin-organize-imports": "^3.2.4",
-    "typescript": "^5.3.2"
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.3.3",
+    "why-is-node-running": "^2.2.2"
   },
   "prettier": {
     "plugins": [

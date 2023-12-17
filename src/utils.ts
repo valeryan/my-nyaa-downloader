@@ -5,7 +5,13 @@ import nodemailer from "nodemailer";
 import * as path from "path";
 import WebTorrent from "webtorrent";
 import { getAppConfig } from "./configuration.ts";
-import { MetaData, TorrentData } from "./types.ts";
+import type {
+  MetaData,
+  NyaaMeta,
+  TorrentData,
+  TrackerData,
+  TrackerGroup,
+} from "./types.ts";
 
 const appConfig = getAppConfig();
 
@@ -18,7 +24,7 @@ const appConfig = getAppConfig();
 const buildNyaaSearchUrl = (uploader: string, query: string): string => {
   const encodedUploader = encodeURIComponent(uploader);
   const encodedQuery = encodeURIComponent(query);
-  return `https://nyaa.si/user/${encodedUploader}?q=${encodedQuery}`;
+  return `${appConfig.nyaaUrl}/user/${encodedUploader}?q=${encodedQuery}`;
 };
 
 /**
@@ -141,11 +147,9 @@ const downloadTorrent = async (
 
 /**
  * Function to send email report with the collected information.
- * @param seriesData List of series data with new episodes downloaded
+ * @param trackerGroups the tracker groups to send in the email
  */
-const sendEmailReport = async (
-  seriesData: { title: string; newEpisodes: number }[],
-) => {
+export const sendEmailReport = async (trackerGroups: TrackerGroup) => {
   const transporter = nodemailer.createTransport({
     host: appConfig.smtp.host,
     port: appConfig.smtp.port,
@@ -155,23 +159,32 @@ const sendEmailReport = async (
       pass: appConfig.smtp.password,
     },
   });
-
   const emailBody = `
-  <h1>Nyaa Download Report</h1>
-  <p>The following series have new episodes:</p>
-  <ul>
-    ${seriesData
-      .map(
-        ({ title, newEpisodes }) =>
-          `<li>${title}: ${newEpisodes} new episode(s)</li>`,
-      )
-      .join("")}
-  </ul>`;
+    <h1>Nyaa Downloader Report</h1>
+    ${Object.entries(trackerGroups)
+      .map(([group, seriesData]) => {
+        const seriesList = seriesData
+          .map(
+            ({ title, newEpisodes }) =>
+              `<li>${title}: ${newEpisodes} new episode(s)</li>`,
+          )
+          .join("");
+
+        return `
+          <h2>${group}</h2>
+          ${
+            seriesData.length > 0
+              ? `<p>The following series have new episodes:</p>
+                <ul>${seriesList}</ul>`
+              : "<p>No new episodes found.</p>"
+          }`;
+      })
+      .join("")}`;
 
   const mailOptions = {
     from: appConfig.fromEmail,
     to: appConfig.reportEmail,
-    subject: "New Episodes Downloaded Report",
+    subject: "Nyaa Downloader Report",
     html: emailBody,
   };
 
@@ -188,13 +201,13 @@ const sendEmailReport = async (
  * @param filePath path to the meta file
  * @returns metadata object
  */
-export const getMetaFromFile = (filePath: string): MetaData[] => {
+export const getMetaFromFile = (filePath: string): NyaaMeta => {
   try {
-    const jsonData: MetaData[] = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    const jsonData: NyaaMeta = JSON.parse(fs.readFileSync(filePath, "utf-8"));
     return jsonData;
   } catch (error) {
     console.error("Error reading meta file:", error);
-    return [];
+    return {};
   }
 };
 
@@ -207,14 +220,16 @@ export const getMetaFromFile = (filePath: string): MetaData[] => {
 export const handleDownloadingNewEpisodes = async (
   rootFolderPath: string,
   meta: MetaData[],
-): Promise<void> => {
-  const downloadTracker: { title: string; newEpisodes: number }[] = [];
-
+  downloadTracker: TrackerData[],
+): Promise<TrackerData[]> => {
+  const divider = "----------------------------------------";
+  console.log(`Checking ${rootFolderPath} for new episodes...`);
+  console.log(divider);
   // Iterate through each metadata entry
   for (const entry of meta) {
     // Skip completed entries
     if (entry.complete) {
-      console.log(`${entry.query} - already complete.`);
+      console.log(`${entry.folder} - already complete.`);
       continue;
     }
 
@@ -234,7 +249,7 @@ export const handleDownloadingNewEpisodes = async (
       const filteredResults = filterForExistingEpisodes(results, folderPath);
 
       const newEpisodes = filteredResults.length;
-      console.log(`${entry.query} - new episodes: ${newEpisodes}`);
+      console.log(`${entry.folder} - new episodes: ${newEpisodes}`);
 
       if (newEpisodes > 0) {
         client = new WebTorrent();
@@ -265,13 +280,13 @@ export const handleDownloadingNewEpisodes = async (
 
         // Add the series and new episode count to the download tracker
         downloadTracker.push({
-          title: entry.query,
+          title: entry.folder,
           newEpisodes: newEpisodes,
         });
       }
     } catch (error) {
       console.error(
-        `Error building URL or handling episodes for ${entry.query}:`,
+        `Error building URL or handling episodes for ${entry.folder}:`,
         error,
       );
 
@@ -284,9 +299,14 @@ export const handleDownloadingNewEpisodes = async (
       }
     }
   }
+  const totalNewEpisodes = downloadTracker.reduce(
+    (total, item) => total + item.newEpisodes,
+    0,
+  );
+  console.log(divider);
+  console.log(`${totalNewEpisodes} Episodes Downloaded`);
+  console.log(divider);
+  console.log();
 
-  // Send email report with the collected information
-  if (downloadTracker.length > 0) {
-    await sendEmailReport(downloadTracker);
-  }
+  return downloadTracker;
 };

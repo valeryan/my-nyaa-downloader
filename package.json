@@ -5,8 +5,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "anime": "concurrently --raw npm:anime:*",
-    "anime:run": "node --no-warnings --loader ts-node/esm src/index.ts anime",
+    "anime": "node --no-warnings --loader ts-node/esm src/index.ts anime",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

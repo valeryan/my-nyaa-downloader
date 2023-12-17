@@ -3,6 +3,14 @@ import { AppConfig, SmtpConfig } from "./types.ts";
 
 dotenv.config(); // Load environment variables from .env file
 
+const getNyaaUrl = (): string => {
+  return process.env.NYAA_URL || "https://nyaa.si";
+};
+
+const getDownloadFolder = (): string => {
+  return process.env.DOWNLOAD_FOLDER || "";
+};
+
 const getSmtpConfig = (): SmtpConfig => {
   return {
     host: process.env.SMTP_HOST || "smtp.gmail.com",
@@ -24,6 +32,8 @@ const getFromEmail = (): string => {
 
 export const getAppConfig = (): AppConfig => {
   return {
+    nyaaUrl: getNyaaUrl(),
+    downloadFolder: getDownloadFolder(),
     smtp: getSmtpConfig(),
     reportEmail: getReportEmail(),
     fromEmail: getFromEmail(),

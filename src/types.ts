@@ -11,6 +11,19 @@ export type MetaData = {
   complete: boolean;
 };
 
+export type NyaaMeta = {
+  [rootFolder: string]: MetaData[];
+};
+
+export type TrackerData = {
+  title: string;
+  newEpisodes: number;
+};
+
+export type TrackerGroup = {
+  [rootFolder: string]: TrackerData[];
+};
+
 export type SmtpConfig = {
   host: string;
   port: number;
@@ -20,6 +33,8 @@ export type SmtpConfig = {
 };
 
 export type AppConfig = {
+  nyaaUrl: string;
+  downloadFolder: string;
   smtp: SmtpConfig;
   reportEmail: string;
   fromEmail: string;

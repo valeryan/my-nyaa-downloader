@@ -14,9 +14,9 @@
     "isolatedModules": true,
     "incremental": true,
     "allowImportingTsExtensions": true,
-    "baseUrl": "./",
+    "baseUrl": "./src",
     "paths": {
-      "*": ["src/*"]
+      "*": ["*"]
     }
   },
   "include": ["./src/**/*.ts"],

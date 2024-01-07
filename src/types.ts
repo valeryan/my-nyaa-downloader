@@ -4,16 +4,19 @@ export type TorrentData = {
   path?: string;
 };
 
-export type MetaData = {
+export type DownloadEntry = {
   folder: string;
   uploader: string;
   query: string;
   complete: boolean;
+  pattern?: string;
 };
 
-export type NyaaMeta = {
-  [rootFolder: string]: MetaData[];
+export type DownloadList = {
+  [rootFolder: string]: DownloadEntry[];
 };
+
+export type EntryFileList = Record<string, string[]>;
 
 export type TrackerData = {
   title: string;

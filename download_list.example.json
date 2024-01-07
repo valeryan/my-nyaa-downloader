@@ -3,6 +3,7 @@
     "folder": "Series Title",
     "uploader": "Ember_Encodes",
     "query": "[EMBER] Series Title",
-    "complete": false
+    "complete": false,
+    "pattern": "Optional Regex Pattern"
   }
 }

@@ -10,7 +10,7 @@ nordvpn connect
 cd /data/Projects/nyaa-downloader
 
 # Run your npm command
-npm run anime
+npm run downloader
 
 # Disconnect from NordVPN after npm command completes
 nordvpn disconnect

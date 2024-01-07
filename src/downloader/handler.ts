@@ -11,7 +11,7 @@ const downloadFolderPath = config.downloadFolder;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const metaFilePath = path.join(__dirname, "../download_list.json");
+const metaFilePath = path.join(__dirname, "../../download_list.json");
 
 (async () => {
   try {

@@ -18,15 +18,17 @@ export const sendEmailReport = async (trackerGroups: TrackerGroup) => {
       pass: appConfig.smtp.password,
     },
   });
+
+  let totalEpisodes = 0;
   const emailBody = `
     <h1>Nyaa Downloader Report</h1>
     ${Object.entries(trackerGroups)
       .map(([group, seriesData]) => {
         const seriesList = seriesData
-          .map(
-            ({ title, newEpisodes }) =>
-              `<li>${title}: ${newEpisodes} new episode(s)</li>`,
-          )
+          .map(({ title, newEpisodes }) => {
+            totalEpisodes += newEpisodes;
+            return `<li>${title}: ${newEpisodes} new episode(s)</li>`;
+          })
           .join("");
 
         return `
@@ -43,7 +45,7 @@ export const sendEmailReport = async (trackerGroups: TrackerGroup) => {
   const mailOptions = {
     from: appConfig.fromEmail,
     to: appConfig.reportEmail,
-    subject: "Nyaa Downloader Report",
+    subject: `Nyaa Downloader Report - ${totalEpisodes} new episode(s)`,
     html: emailBody,
   };
 

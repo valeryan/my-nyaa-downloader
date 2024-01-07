@@ -8,6 +8,11 @@ export const checkFolder = (folderPath: string): void => {
   }
 };
 
+export const removeFile = (filePath: string): void => {
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+  }
+};
 /**
  * Get the list of files in a given download folder.
  * @param rootFolderPath Folder that holds all downloads

@@ -40,7 +40,7 @@ export const scrapeNyaaSearchResults = async ({
     // Extract title and magnet link from each row
     const results: TorrentData[] = rows
       .map((_, row) => {
-        const title = $(row).find("td:nth-child(2)").text().trim();
+        const title = $(row).find("td:nth-child(2) a:last-child").text().trim();
         const magnetLink =
           $(row).find('td:nth-child(3) a[href^="magnet"]').attr("href") || "";
 

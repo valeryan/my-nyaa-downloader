@@ -1,6 +1,6 @@
 import * as cliProgress from "cli-progress";
 import WebTorrent from "webtorrent";
-import { checkFolder, getFileList } from "./filesystem.ts";
+import { checkFolder, getFileList, removeFile } from "./filesystem.ts";
 import { logger } from "./logger.ts";
 import { scrapeNyaaSearchResults } from "./nyaa.ts";
 import {
@@ -109,12 +109,14 @@ const versionedEpisodes = (
 
 /**
  * Remove existing episodes from the results.
+ * @param rootFolderPath the root folder path
  * @param fileList List of files in the destination folder
  * @param entry The DownloadEntry
  * @param item The item to check
  * @returns boolean
  */
 const existingEpisodes = (
+  rootFolderPath: string,
   fileList: EntryFileList,
   entry: DownloadEntry,
   item: TorrentData,
@@ -123,12 +125,43 @@ const existingEpisodes = (
   const match = item.title.match(pattern);
   if (match && match.length == 3) {
     const seasonNumber = parseInt(match[1], 10);
-    const episodeNumber = match[2].toString();
-
     const seasonFolder = `Season ${seasonNumber}`;
+
+    const episodePath = `${rootFolderPath}/${entry.folder}/${seasonFolder}`;
+    const episodeNumber = match[2].toString();
     const episodeFile = `- ${episodeNumber}`;
 
+    const episodeKey = match[0];
+    const versionedPattern = new RegExp(`${episodeKey}v(\\d+)`, "i");
+    const versionMatch = item.title.match(versionedPattern);
+
     if (fileList[seasonFolder]) {
+      // Special handling for versioned episodes
+      // if item has a version
+      if (versionMatch) {
+        const version = parseInt(versionMatch[1]);
+        // Check if fileList has an entry that matches the episode
+        const fileKey = fileList[seasonFolder].find((file) =>
+          file.includes(episodeKey),
+        );
+        if (fileKey) {
+          // Check if the file has a version
+          const fileVersionMatch = fileKey.match(versionedPattern);
+          const fileVersion = fileVersionMatch
+            ? parseInt(fileVersionMatch[1])
+            : 0;
+
+          // If the file has no version or the item version is higher, remove the file from disk
+          if (!fileVersionMatch || version > fileVersion) {
+            removeFile(`${episodePath}/${fileKey}`);
+            // Keep item to download new version
+            return true;
+          }
+          // Version is correct, remove item from results
+          return false;
+        }
+      }
+
       const matchingFile = fileList[seasonFolder].some(
         (file) =>
           file.includes(episodeFile) || file.includes(`E${episodeNumber}`),
@@ -192,7 +225,9 @@ export const handleDownloadingNewEpisodes = async (
       const fileList = getFileList(rootFolderPath, entry);
       const filteredResults = results
         .filter((result) => versionedEpisodes(results, entry, result))
-        .filter((result) => existingEpisodes(fileList, entry, result))
+        .filter((result) =>
+          existingEpisodes(rootFolderPath, fileList, entry, result),
+        )
         .map((result) => setEpisodePath(rootFolderPath, entry, result));
 
       const newEpisodes = filteredResults.length;

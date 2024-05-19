@@ -26,7 +26,7 @@ const validatePattern = (pattern: string | undefined): RegExp | false => {
   }
   const regex = new RegExp(pattern);
   const match = regex.source.match(/(?<!\\)\(/g);
-  return match && match.length === 2 ? regex : false;
+  return match && match.length === 4 ? regex : false;
 };
 
 /**
@@ -64,6 +64,24 @@ const downloadTorrent = async (
   });
 };
 
+const getEpisodeKey = (entry: DownloadEntry, title: string) => {
+  const pattern = validatePattern(entry.pattern) || defaultPattern;
+  const match = title.match(pattern);
+  return match && match.length === 3 ? match[0] : null;
+};
+
+const getSameEpisodeResults = (
+  results: TorrentData[],
+  entry: DownloadEntry,
+  episodeKey: string,
+) => {
+  const pattern = validatePattern(entry.pattern) || defaultPattern;
+  return results.filter((result) => {
+    const match = result.title.match(pattern);
+    return match && match.length === 3 && match[0] === episodeKey;
+  });
+};
+
 /**
  * Remove duplicate episodes that are versioned, keep highest version.
  * @param results Full list of results
@@ -76,35 +94,86 @@ const versionedEpisodes = (
   entry: DownloadEntry,
   item: TorrentData,
 ) => {
-  const pattern = validatePattern(entry.pattern) || defaultPattern;
-  const match = item.title.match(pattern);
-  if (match && match.length == 3) {
-    const episodeKey = match[0];
-    const versionedPattern = new RegExp(`${episodeKey}v(\\d+)`, "i");
-    // Find all results with the same episodeKey
-    const sameEpisodeResults = results.filter((result) => {
-      const match = result.title.match(pattern);
-      return match && match.length == 3 && match[0] === episodeKey;
-    });
-    // If there's only one result with the same episodeKey, no need to check for versions
-    if (sameEpisodeResults.length <= 1) {
-      return true;
-    }
-    // Find the highest version among the sameEpisodeResults
-    const highestVersion = sameEpisodeResults.reduce((maxVersion, result) => {
-      const versionMatch = result.title.match(versionedPattern);
-      const version = versionMatch ? parseInt(versionMatch[1], 10) : 1;
-      return Math.max(maxVersion, version);
-    }, 1);
-
-    // Check if the version of the current result is the highest
-    const versionMatch = item.title.match(versionedPattern);
-    const version = versionMatch ? parseInt(versionMatch[1]) : 1;
-
-    return version === highestVersion;
+  const episodeKey = getEpisodeKey(entry, item.title);
+  if (episodeKey === null) {
+    return false;
   }
+  const sameEpisodeResults = getSameEpisodeResults(results, entry, episodeKey);
+  if (sameEpisodeResults.length <= 1) {
+    return true;
+  }
+  const versionedPattern = new RegExp(`${episodeKey}v(\\d+)`, "i");
+  const highestVersion = sameEpisodeResults.reduce((maxVersion, result) => {
+    const versionMatch = result.title.match(versionedPattern);
+    const version = versionMatch ? parseInt(versionMatch[1], 10) : 1;
+    return Math.max(maxVersion, version);
+  }, 1);
+  const versionMatch = item.title.match(versionedPattern);
+  const version = versionMatch ? parseInt(versionMatch[1]) : 1;
+  return version === highestVersion;
+};
 
-  return false;
+/**
+ * Remove duplicate episodes that different resolutions, keep highest resolution.
+ * @param results Full list of results
+ * @param entry The DownloadEntry
+ * @param item The item to check
+ * @returns boolean
+ */
+const resolutionedEpisodes = (
+  results: TorrentData[],
+  entry: DownloadEntry,
+  item: TorrentData,
+) => {
+  const episodeKey = getEpisodeKey(entry, item.title);
+  if (episodeKey === null) {
+    return false;
+  }
+  const sameEpisodeResults = getSameEpisodeResults(results, entry, episodeKey);
+  if (sameEpisodeResults.length <= 1) {
+    return true;
+  }
+  const resolutionPattern = /\[(\d+)p\]/i;
+  const highestResolution = sameEpisodeResults.reduce(
+    (maxResolution, result) => {
+      const resolutionMatch = result.title.match(resolutionPattern);
+      const resolution = resolutionMatch ? parseInt(resolutionMatch[1]) : 480;
+      return Math.max(maxResolution, resolution);
+    },
+    480,
+  );
+  const resolutionMatch = item.title.match(resolutionPattern);
+  const resolution = resolutionMatch ? parseInt(resolutionMatch[1]) : 480;
+  return resolution === highestResolution;
+};
+
+/**
+ * Remove duplicate episodes that are not HEVC, keep HEVC if exists.
+ * @param results Full list of results
+ * @param entry The DownloadEntry
+ * @param item The item to check
+ * @returns boolean
+ */
+const hevcEpisodes = (
+  results: TorrentData[],
+  entry: DownloadEntry,
+  item: TorrentData,
+) => {
+  const episodeKey = getEpisodeKey(entry, item.title);
+  if (episodeKey === null) {
+    return false;
+  }
+  const sameEpisodeResults = getSameEpisodeResults(results, entry, episodeKey);
+  if (sameEpisodeResults.length <= 1) {
+    return true;
+  }
+  const hasHEVC = sameEpisodeResults.some((result) =>
+    result.title.includes("[HEVC]"),
+  );
+  if (!hasHEVC) {
+    return true;
+  }
+  return item.title.includes("[HEVC]");
 };
 
 /**
@@ -124,7 +193,7 @@ const existingEpisodes = (
   const pattern = validatePattern(entry.pattern) || defaultPattern;
   const match = item.title.match(pattern);
   if (match && match.length == 3) {
-    const seasonNumber = parseInt(match[1], 10);
+    const seasonNumber = parseInt(match[1]) || 1;
     const seasonFolder = `Season ${seasonNumber}`;
 
     const episodePath = `${rootFolderPath}/${entry.folder}/${seasonFolder}`;
@@ -193,7 +262,7 @@ const setEpisodePath = (
   const pattern = validatePattern(entry.pattern) || defaultPattern;
   const match = item.title.match(pattern);
   if (match && match.length == 3) {
-    const seasonNumber = parseInt(match[1], 10);
+    const seasonNumber = parseInt(match[1]) || 1;
     const seasonFolder = `Season ${seasonNumber}`;
     item.path = `${rootFolderPath}/${entry.folder}/${seasonFolder}`;
     checkFolder(item.path);
@@ -225,6 +294,8 @@ export const handleDownloadingNewEpisodes = async (
       const fileList = getFileList(rootFolderPath, entry);
       const filteredResults = results
         .filter((result) => versionedEpisodes(results, entry, result))
+        .filter((result) => resolutionedEpisodes(results, entry, result))
+        .filter((result) => hevcEpisodes(results, entry, result))
         .filter((result) =>
           existingEpisodes(rootFolderPath, fileList, entry, result),
         )

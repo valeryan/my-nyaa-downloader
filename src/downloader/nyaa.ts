@@ -12,7 +12,7 @@ const appConfig = getAppConfig();
 const buildNyaaSearchUrl = (uploader: string, query: string): string => {
   const encodedUploader = encodeURIComponent(uploader);
   const encodedQuery = encodeURIComponent(query);
-  return `${appConfig.nyaaUrl}/user/${encodedUploader}?q=${encodedQuery}`;
+  return `${appConfig.nyaaUrl}/user/${encodedUploader}?f=0&c=1_2&q=${encodedQuery}`;
 };
 
 /**

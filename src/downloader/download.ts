@@ -3,17 +3,44 @@ import WebTorrent from "webtorrent";
 import { checkFolder, getFileList, removeFile } from "./filesystem.ts";
 import { logger } from "./logger.ts";
 import { scrapeNyaaSearchResults } from "./nyaa.ts";
+import { patterns } from "./patterns.ts";
 import {
   DownloadEntry,
   EntryFileList,
+  EpisodeAttributes,
   TorrentData,
   TrackerData,
 } from "./types.ts";
 
 /**
  * Default pattern to match episode numbers.
+ * Matches S01E01, S1E1, S01E1, S1E01, etc.
  */
-const defaultPattern = /S(\d+)E(\d+)/i;
+const defaultPattern = patterns.seasonAndEpisode;
+
+/**
+ * Map of episodes that need cleanup.
+ */
+const cleanupEpisodes: Map<string, EpisodeAttributes> = new Map();
+
+/**
+ * Flag an episode for cleanup.
+ * @param episodeKey The episode key to flag
+ * @param seasonKey The season key to flag
+ * @param newAttributes The new attributes to set
+ */
+const flagEpisodesForCleanup = (
+  episodeKey: string,
+  seasonKey: number,
+  newAttributes: Partial<EpisodeAttributes>,
+) => {
+  const attributes = cleanupEpisodes.get(episodeKey) || {};
+  cleanupEpisodes.set(episodeKey, {
+    season: seasonKey,
+    ...attributes,
+    ...newAttributes,
+  });
+};
 
 /**
  * Validate the given pattern will return 2 groups.
@@ -64,19 +91,44 @@ const downloadTorrent = async (
   });
 };
 
-const getEpisodeKey = (entry: DownloadEntry, title: string) => {
-  const pattern = validatePattern(entry.pattern) || defaultPattern;
+/**
+ * Get the episode key from the title.
+ * @param anime The DownloadEntry
+ * @param title The title to match
+ * @returns episode key or null if not found
+ */
+const getEpisodeKey = (anime: DownloadEntry, title: string) => {
+  const pattern = validatePattern(anime.pattern) || defaultPattern;
   const match = title.match(pattern);
   return match && match.length === 3 ? match[0] : null;
 };
 
-const getSameEpisodeResults = (
-  results: TorrentData[],
-  entry: DownloadEntry,
+/**
+ * Get the season key from the title.
+ * @param anime The DownloadEntry
+ * @param title The title to match
+ * @returns season key
+ */
+const getSeasonKey = (anime: DownloadEntry, title: string) => {
+  const pattern = validatePattern(anime.pattern) || defaultPattern;
+  const match = title.match(pattern);
+  return match && match.length === 3 ? parseInt(match[1]) || 1 : 1;
+};
+
+/**
+ * Get duplicate episodes based on the episode key.
+ * @param available Possible download results
+ * @param anime The DownloadEntry
+ * @param episodeKey The episode key to match
+ * @returns List of duplicate episodes
+ */
+const getDuplicateEpisodes = (
+  available: TorrentData[],
+  anime: DownloadEntry,
   episodeKey: string,
 ) => {
-  const pattern = validatePattern(entry.pattern) || defaultPattern;
-  return results.filter((result) => {
+  const pattern = validatePattern(anime.pattern) || defaultPattern;
+  return available.filter((result) => {
     const match = result.title.match(pattern);
     return match && match.length === 3 && match[0] === episodeKey;
   });
@@ -84,57 +136,73 @@ const getSameEpisodeResults = (
 
 /**
  * Remove duplicate episodes that are versioned, keep highest version.
- * @param results Full list of results
- * @param entry The DownloadEntry
- * @param item The item to check
+ * @param available Full list of results
+ * @param anime The DownloadEntry
+ * @param episode The item to check
  * @returns boolean
  */
 const versionedEpisodes = (
-  results: TorrentData[],
-  entry: DownloadEntry,
-  item: TorrentData,
+  available: TorrentData[],
+  anime: DownloadEntry,
+  episode: TorrentData,
 ) => {
-  const episodeKey = getEpisodeKey(entry, item.title);
+  // Can't determine episode key, remove item
+  const episodeKey = getEpisodeKey(anime, episode.title);
   if (episodeKey === null) {
     return false;
   }
-  const sameEpisodeResults = getSameEpisodeResults(results, entry, episodeKey);
-  if (sameEpisodeResults.length <= 1) {
+
+  const seasonKey = getSeasonKey(anime, episode.title);
+
+  // Only one result, keep it
+  const duplicateEpisodes = getDuplicateEpisodes(available, anime, episodeKey);
+  if (duplicateEpisodes.length <= 1) {
     return true;
   }
-  const versionedPattern = new RegExp(`${episodeKey}v(\\d+)`, "i");
-  const highestVersion = sameEpisodeResults.reduce((maxVersion, result) => {
+
+  // Get the highest version number
+  const versionedPattern = patterns.versioned(episodeKey);
+  const highestVersion = duplicateEpisodes.reduce((maxVersion, result) => {
     const versionMatch = result.title.match(versionedPattern);
     const version = versionMatch ? parseInt(versionMatch[1], 10) : 1;
     return Math.max(maxVersion, version);
   }, 1);
-  const versionMatch = item.title.match(versionedPattern);
+  flagEpisodesForCleanup(episodeKey, seasonKey, { version: highestVersion });
+
+  // only keep the highest version
+  const versionMatch = episode.title.match(versionedPattern);
   const version = versionMatch ? parseInt(versionMatch[1]) : 1;
   return version === highestVersion;
 };
 
 /**
  * Remove duplicate episodes that different resolutions, keep highest resolution.
- * @param results Full list of results
- * @param entry The DownloadEntry
- * @param item The item to check
+ * @param available Full list of results
+ * @param anime The DownloadEntry
+ * @param episode The item to check
  * @returns boolean
  */
 const resolutionedEpisodes = (
-  results: TorrentData[],
-  entry: DownloadEntry,
-  item: TorrentData,
+  available: TorrentData[],
+  anime: DownloadEntry,
+  episode: TorrentData,
 ) => {
-  const episodeKey = getEpisodeKey(entry, item.title);
+  // Can't determine episode key, remove item
+  const episodeKey = getEpisodeKey(anime, episode.title);
   if (episodeKey === null) {
     return false;
   }
-  const sameEpisodeResults = getSameEpisodeResults(results, entry, episodeKey);
-  if (sameEpisodeResults.length <= 1) {
+
+  const seasonKey = getSeasonKey(anime, episode.title);
+
+  // Only one result, keep it
+  const duplicateEpisodes = getDuplicateEpisodes(available, anime, episodeKey);
+  if (duplicateEpisodes.length <= 1) {
     return true;
   }
-  const resolutionPattern = /\[(\d+)p\]/i;
-  const highestResolution = sameEpisodeResults.reduce(
+  // Get the highest resolution
+  const resolutionPattern = patterns.resolution;
+  const highestResolution = duplicateEpisodes.reduce(
     (maxResolution, result) => {
       const resolutionMatch = result.title.match(resolutionPattern);
       const resolution = resolutionMatch ? parseInt(resolutionMatch[1]) : 480;
@@ -142,132 +210,148 @@ const resolutionedEpisodes = (
     },
     480,
   );
-  const resolutionMatch = item.title.match(resolutionPattern);
+  flagEpisodesForCleanup(episodeKey, seasonKey, {
+    resolution: highestResolution,
+  });
+
+  // Only keep the highest resolution
+  const resolutionMatch = episode.title.match(resolutionPattern);
   const resolution = resolutionMatch ? parseInt(resolutionMatch[1]) : 480;
   return resolution === highestResolution;
 };
 
 /**
  * Remove duplicate episodes that are not HEVC, keep HEVC if exists.
- * @param results Full list of results
- * @param entry The DownloadEntry
- * @param item The item to check
+ * @param available Full list of results
+ * @param anime The DownloadEntry
+ * @param episode The item to check
  * @returns boolean
  */
 const hevcEpisodes = (
-  results: TorrentData[],
-  entry: DownloadEntry,
-  item: TorrentData,
+  available: TorrentData[],
+  anime: DownloadEntry,
+  episode: TorrentData,
 ) => {
-  const episodeKey = getEpisodeKey(entry, item.title);
+  // Can't determine episode key, remove item
+  const episodeKey = getEpisodeKey(anime, episode.title);
   if (episodeKey === null) {
     return false;
   }
-  const sameEpisodeResults = getSameEpisodeResults(results, entry, episodeKey);
-  if (sameEpisodeResults.length <= 1) {
+
+  const seasonKey = getSeasonKey(anime, episode.title);
+
+  // Only one result, keep it
+  const duplicateEpisodes = getDuplicateEpisodes(available, anime, episodeKey);
+  if (duplicateEpisodes.length <= 1) {
     return true;
   }
-  const hasHEVC = sameEpisodeResults.some((result) =>
+  // Check if any result is HEVC
+  const hasHEVC = duplicateEpisodes.some((result) =>
     result.title.includes("[HEVC]"),
   );
   if (!hasHEVC) {
     return true;
   }
-  return item.title.includes("[HEVC]");
+  flagEpisodesForCleanup(episodeKey, seasonKey, { encoding: "HEVC" });
+  return episode.title.includes("[HEVC]");
+};
+
+const episodeCleanupHandler = (
+  rootFolderPath: string,
+  fileList: EntryFileList,
+  anime: DownloadEntry,
+) => {
+  cleanupEpisodes.forEach((attributes, episodeKey) => {
+    const seasonFolder = `Season ${attributes.season}`;
+    const episodePath = `${rootFolderPath}/${anime.folder}/${seasonFolder}`;
+    const matchingFiles = fileList[seasonFolder].filter((file) =>
+      file.includes(episodeKey),
+    );
+    matchingFiles.forEach((file) => {
+      // Handle versioned episodes
+      if (attributes.version) {
+        const version = `v${attributes.version}`;
+        if (!file.includes(version)) {
+          logger.info(`Removing old version: ${file}`);
+          removeFile(`${episodePath}/${file}`);
+        }
+      }
+
+      // Handle resolutioned episodes
+      if (attributes.resolution) {
+        const resolution = `${attributes.resolution}p`;
+        if (!file.includes(resolution)) {
+          logger.info(`Removing old resolution: ${file}`);
+          removeFile(`${episodePath}/${file}`);
+        }
+      }
+
+      // Handle HEVC episodes
+      if (attributes.encoding) {
+        if (!file.includes(attributes.encoding)) {
+          logger.info(`Removing old encoding: ${file}`);
+          removeFile(`${episodePath}/${file}`);
+        }
+      }
+    });
+  });
+  cleanupEpisodes.clear();
 };
 
 /**
  * Remove existing episodes from the results.
- * @param rootFolderPath the root folder path
  * @param fileList List of files in the destination folder
- * @param entry The DownloadEntry
- * @param item The item to check
+ * @param anime The DownloadEntry
+ * @param episode The item to check
  * @returns boolean
  */
 const existingEpisodes = (
-  rootFolderPath: string,
   fileList: EntryFileList,
-  entry: DownloadEntry,
-  item: TorrentData,
+  anime: DownloadEntry,
+  episode: TorrentData,
 ) => {
-  const pattern = validatePattern(entry.pattern) || defaultPattern;
-  const match = item.title.match(pattern);
-  if (match && match.length == 3) {
-    const seasonNumber = parseInt(match[1]) || 1;
-    const seasonFolder = `Season ${seasonNumber}`;
-
-    const episodePath = `${rootFolderPath}/${entry.folder}/${seasonFolder}`;
-    const episodeNumber = match[2].toString();
-    const episodeFile = `- ${episodeNumber}`;
-
-    const episodeKey = match[0];
-    const versionedPattern = new RegExp(`${episodeKey}v(\\d+)`, "i");
-    const versionMatch = item.title.match(versionedPattern);
-
-    if (fileList[seasonFolder]) {
-      // Special handling for versioned episodes
-      // if item has a version
-      if (versionMatch) {
-        const version = parseInt(versionMatch[1]);
-        // Check if fileList has an entry that matches the episode
-        const fileKey = fileList[seasonFolder].find((file) =>
-          file.includes(episodeKey),
-        );
-        if (fileKey) {
-          // Check if the file has a version
-          const fileVersionMatch = fileKey.match(versionedPattern);
-          const fileVersion = fileVersionMatch
-            ? parseInt(fileVersionMatch[1])
-            : 0;
-
-          // If the file has no version or the item version is higher, remove the file from disk
-          if (!fileVersionMatch || version > fileVersion) {
-            removeFile(`${episodePath}/${fileKey}`);
-            // Keep item to download new version
-            return true;
-          }
-          // Version is correct, remove item from results
-          return false;
-        }
-      }
-
-      const matchingFile = fileList[seasonFolder].some(
-        (file) =>
-          file.includes(episodeFile) || file.includes(`E${episodeNumber}`),
-      );
-
-      // Return true to keep the entry if no matching file is found
-      return !matchingFile;
-    } else {
-      return true;
-    }
+  const pattern = validatePattern(anime.pattern) || defaultPattern;
+  const match = episode.title.match(pattern);
+  // Remove entries that do not match the expected pattern
+  if (!match || match.length != 3) {
+    return false;
   }
 
-  // Remove entries that do not match the expected pattern
-  return false;
+  // we can assume a missing season folder means no episodes exist
+  const seasonFolder = `Season ${parseInt(match[1]) || 1}`;
+  if (!fileList[seasonFolder]) {
+    return true;
+  }
+
+  const episodeNumber = match[2].toString();
+  const episodeFile = `- ${episodeNumber}`;
+
+  return !fileList[seasonFolder].some(
+    (file) => file.includes(episodeFile) || file.includes(`E${episodeNumber}`),
+  );
 };
 
 /**
  * Set the path for the episode.
  * @param rootFolderPath the root folder path
- * @param entry The DownloadEntry
- * @param item The item to check
+ * @param anime The DownloadEntry
+ * @param episode The item to check
  * @returns TorrentData with path set
  */
 const setEpisodePath = (
   rootFolderPath: string,
-  entry: DownloadEntry,
-  item: TorrentData,
+  anime: DownloadEntry,
+  episode: TorrentData,
 ) => {
-  const pattern = validatePattern(entry.pattern) || defaultPattern;
-  const match = item.title.match(pattern);
+  const pattern = validatePattern(anime.pattern) || defaultPattern;
+  const match = episode.title.match(pattern);
   if (match && match.length == 3) {
     const seasonNumber = parseInt(match[1]) || 1;
     const seasonFolder = `Season ${seasonNumber}`;
-    item.path = `${rootFolderPath}/${entry.folder}/${seasonFolder}`;
-    checkFolder(item.path);
+    episode.path = `${rootFolderPath}/${anime.folder}/${seasonFolder}`;
+    checkFolder(episode.path);
   }
-  return item;
+  return episode;
 };
 
 export const handleDownloadingNewEpisodes = async (
@@ -277,10 +361,10 @@ export const handleDownloadingNewEpisodes = async (
 ): Promise<TrackerData[]> => {
   logger.header(`Checking ${rootFolderPath} for new episodes...`);
   // Iterate through each metadata entry
-  for (const entry of downloads) {
+  for (const anime of downloads) {
     // Skip completed entries
-    if (entry.complete) {
-      logger.info(`${entry.folder} - already complete.`);
+    if (anime.complete) {
+      logger.info(`${anime.folder} - already complete.`);
       continue;
     }
     // Create workers
@@ -289,20 +373,30 @@ export const handleDownloadingNewEpisodes = async (
 
     try {
       // Scrape Nyaa search results
-      const results = await scrapeNyaaSearchResults(entry);
+      const available = await scrapeNyaaSearchResults(anime);
+      const fileList = getFileList(rootFolderPath, anime);
 
-      const fileList = getFileList(rootFolderPath, entry);
-      const filteredResults = results
-        .filter((result) => versionedEpisodes(results, entry, result))
-        .filter((result) => resolutionedEpisodes(results, entry, result))
-        .filter((result) => hevcEpisodes(results, entry, result))
-        .filter((result) =>
-          existingEpisodes(rootFolderPath, fileList, entry, result),
-        )
-        .map((result) => setEpisodePath(rootFolderPath, entry, result));
+      // Apply special filters
+      let specialFilters = available.filter((episode) =>
+        resolutionedEpisodes(available, anime, episode),
+      );
+      specialFilters = specialFilters.filter((episode) =>
+        hevcEpisodes(specialFilters, anime, episode),
+      );
+      specialFilters = specialFilters.filter((episode) =>
+        versionedEpisodes(specialFilters, anime, episode),
+      );
+
+      // Cleanup special episodes
+      episodeCleanupHandler(rootFolderPath, fileList, anime);
+
+      // Filter out existing episodes and update the path
+      const filteredResults = specialFilters
+        .filter((episode) => existingEpisodes(fileList, anime, episode))
+        .map((episode) => setEpisodePath(rootFolderPath, anime, episode));
 
       const newEpisodes = filteredResults.length;
-      logger.info(`${entry.folder} - new episodes: ${newEpisodes}`);
+      logger.info(`${anime.folder} - new episodes: ${newEpisodes}`);
 
       if (newEpisodes > 0) {
         client = new WebTorrent();
@@ -333,13 +427,13 @@ export const handleDownloadingNewEpisodes = async (
 
         // Add the series and new episode count to the download tracker
         downloadTracker.push({
-          title: entry.folder,
+          title: anime.folder,
           newEpisodes: newEpisodes,
         });
       }
     } catch (error) {
       logger.error(
-        `Error building URL or handling episodes for ${entry.folder}:`,
+        `Error building URL or handling episodes for ${anime.folder}:`,
         error,
       );
 

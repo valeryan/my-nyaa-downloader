@@ -1,3 +1,10 @@
+export type EpisodeAttributes = {
+  version?: number;
+  encoding?: string;
+  resolution?: number;
+  season: number;
+};
+
 export type TorrentData = {
   title: string;
   magnetLink: string;

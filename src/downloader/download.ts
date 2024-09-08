@@ -167,6 +167,7 @@ const versionedEpisodes = (
     const version = versionMatch ? parseInt(versionMatch[1], 10) : 1;
     return Math.max(maxVersion, version);
   }, 1);
+
   flagEpisodesForCleanup(episodeKey, seasonKey, { version: highestVersion });
 
   // only keep the highest version
@@ -205,18 +206,19 @@ const resolutionedEpisodes = (
   const highestResolution = duplicateEpisodes.reduce(
     (maxResolution, result) => {
       const resolutionMatch = result.title.match(resolutionPattern);
-      const resolution = resolutionMatch ? parseInt(resolutionMatch[1]) : 480;
+      const resolution = resolutionMatch ? parseInt(resolutionMatch[1]) : 1080;
       return Math.max(maxResolution, resolution);
     },
-    480,
+    1080,
   );
+
   flagEpisodesForCleanup(episodeKey, seasonKey, {
     resolution: highestResolution,
   });
 
   // Only keep the highest resolution
   const resolutionMatch = episode.title.match(resolutionPattern);
-  const resolution = resolutionMatch ? parseInt(resolutionMatch[1]) : 480;
+  const resolution = resolutionMatch ? parseInt(resolutionMatch[1]) : 1080;
   return resolution === highestResolution;
 };
 

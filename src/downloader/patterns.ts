@@ -15,6 +15,6 @@ const versioned = (episodeKey: string) =>
  * pattern to match resolution.
  * Matches [720p], [1080p], etc.
  */
-const resolution = /\[(\d+)p\]/i;
+const resolution = /\[?(\d+)p\]?/i;
 
 export const patterns = { seasonAndEpisode, versioned, resolution };

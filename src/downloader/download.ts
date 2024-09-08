@@ -1,6 +1,6 @@
 import * as cliProgress from "cli-progress";
 import WebTorrent from "webtorrent";
-import { checkFolder, getFileList, removeFile } from "./filesystem.ts";
+import { checkFolder, getFileList, removeFile, renameFile } from "./filesystem.ts";
 import { logger } from "./logger.ts";
 import { scrapeNyaaSearchResults } from "./nyaa.ts";
 import { patterns } from "./patterns.ts";
@@ -77,8 +77,12 @@ const downloadTorrent = async (
         bar.update(torrent.downloaded, { filename: torrent.name });
       });
 
-      torrent.on("done", () => {
+      torrent.on("done", async () => {
         bar.stop(); // Stop and clear the progress bar
+        if (torrent.files.length === 1) {
+          const file = torrent.files[0];
+          await renameFile(file.path, torrent.name, outputPath);
+        }
         resolve();
       });
 
@@ -326,11 +330,11 @@ const existingEpisodes = (
   }
 
   const episodeNumber = match[2].toString();
-  const episodeFile = `- ${episodeNumber}`;
 
-  return !fileList[seasonFolder].some(
-    (file) => file.includes(episodeFile) || file.includes(`E${episodeNumber}`),
-  );
+  return !fileList[seasonFolder].some((file) => {
+    const fileMatch = file.match(pattern);
+    return fileMatch && fileMatch[2].toString() === episodeNumber;
+  });
 };
 
 /**

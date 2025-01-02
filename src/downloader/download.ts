@@ -70,7 +70,18 @@ const downloadTorrent = async (
   outputPath: string,
 ): Promise<void> => {
   return new Promise((resolve, reject) => {
-    client.add(magnetLink, { path: outputPath }, (torrent) => {
+    const torrent = client.add(magnetLink, { path: outputPath });
+
+    const timeout = setTimeout(() => {
+      if (!torrent.ready) {
+        const error = `Download timed out for ${torrent.name}`;
+        torrent.destroy();
+        reject(error);
+      }
+    }, 5000); // 5 seconds timeout
+
+    torrent.on("ready", () => {
+      clearTimeout(timeout); // Clear the timeout when torrent is ready
       const bar = multiBar.create(torrent.length, 0);
 
       torrent.on("download", () => {
@@ -85,12 +96,12 @@ const downloadTorrent = async (
         }
         resolve();
       });
+    });
 
-      torrent.on("error", (error) => {
-        bar.stop(); // Stop and clear the progress bar
-        logger.error("Error downloading torrent:", error);
-        reject(error);
-      });
+    torrent.on("error", (error) => {
+      clearTimeout(timeout); // Clear the timeout on error
+      logger.error("Error downloading torrent:", error);
+      reject(error);
     });
   });
 };
@@ -253,23 +264,36 @@ const hevcEpisodes = (
   }
   // Check if any result is HEVC
   const hasHEVC = duplicateEpisodes.some((result) =>
-    result.title.includes("[HEVC]"),
+    patterns.hevc.test(result.title),
   );
   if (!hasHEVC) {
     return true;
   }
   flagEpisodesForCleanup(episodeKey, seasonKey, { encoding: "HEVC" });
-  return episode.title.includes("[HEVC]");
+  return patterns.hevc.test(episode.title);
 };
 
+/**
+ * Handle cleanup of episodes.
+ * @param rootFolderPath the root folder path
+ * @param fileList List of files in the destination folder
+ * @param anime The DownloadEntry
+ */
 const episodeCleanupHandler = (
   rootFolderPath: string,
   fileList: EntryFileList,
   anime: DownloadEntry,
 ) => {
+  if (!fileList || Object.keys(fileList).length === 0) {
+    return;
+  }
+
   cleanupEpisodes.forEach((attributes, episodeKey) => {
     const seasonFolder = `Season ${attributes.season}`;
     const episodePath = `${rootFolderPath}/${anime.folder}/${seasonFolder}`;
+    if (!fileList[seasonFolder]) {
+      return;
+    }
     const matchingFiles = fileList[seasonFolder].filter((file) =>
       file.includes(episodeKey),
     );
@@ -333,7 +357,7 @@ const existingEpisodes = (
 
   return !fileList[seasonFolder].some((file) => {
     const fileMatch = file.match(pattern);
-    return fileMatch && fileMatch[2].toString() === episodeNumber;
+    return (fileMatch && fileMatch[2].toString() === episodeNumber) || patterns.episodeNumberPattern(episodeNumber).test(file);;
   });
 };
 
@@ -358,6 +382,20 @@ const setEpisodePath = (
     checkFolder(episode.path);
   }
   return episode;
+};
+
+/**
+ * Split an array into chunks of a specified size.
+ * @param array The array to split
+ * @param size The size of each chunk
+ * @returns An array of chunks
+ */
+const chunkArray = <T>(array: T[], size: number): T[][] => {
+  const result: T[][] = [];
+  for (let i = 0; i < array.length; i += size) {
+    result.push(array.slice(i, i + size));
+  }
+  return result;
 };
 
 export const handleDownloadingNewEpisodes = async (
@@ -415,15 +453,30 @@ export const handleDownloadingNewEpisodes = async (
           cliProgress.Presets.shades_classic,
         );
 
-        // Download torrents for this query
-        await Promise.all(
-          filteredResults.map(({ magnetLink, path }) => {
+        let successfulDownloads = 0;
+
+        // Split the filtered results into chunks of 6
+        const chunks = chunkArray(filteredResults, 6);
+
+        // Process each chunk sequentially
+        for (const chunk of chunks) {
+          const downloadPromises = chunk.map(({ magnetLink, path }) => {
             if (magnetLink && path) {
               return downloadTorrent(client!, multiBar!, magnetLink, path);
             }
-            return Promise.resolve();
-          }),
-        );
+            return Promise.reject(new Error("Missing magnetLink or path")); // Reject if magnetLink or path is missing
+          });
+
+          const results = await Promise.allSettled(downloadPromises);
+
+          results.forEach(result => {
+            if (result.status === 'fulfilled') {
+              successfulDownloads++;
+            } else {
+              logger.error(`Error downloading torrent: ${result.reason instanceof Error ? result.reason.message : result.reason}`);
+            }
+          });
+        }
 
         // Tear down the progress bar and WebTorrent client
         multiBar.stop();
@@ -434,7 +487,7 @@ export const handleDownloadingNewEpisodes = async (
         // Add the series and new episode count to the download tracker
         downloadTracker.push({
           title: anime.folder,
-          newEpisodes: newEpisodes,
+          newEpisodes: successfulDownloads,
         });
       }
     } catch (error) {

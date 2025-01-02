@@ -13,8 +13,16 @@ const versioned = (episodeKey: string) =>
 
 /**
  * pattern to match resolution.
- * Matches [720p], [1080p], etc.
+ * Matches (720p), [720p], (1080p), [1080p], (1080p AMZN WEBRip HEVC EAC3), [1080p AMZN WEBRip HEVC EAC3], etc.
  */
-const resolution = /\[?(\d+)p\]?/i;
+const resolution = /[[(](?:[^\])]* )?(\d+)p(?: [^\])]*)?[\])]/i;
 
-export const patterns = { seasonAndEpisode, versioned, resolution };
+const episodeNumberPattern = (episodeNumber: string) => new RegExp(`-\\s*${episodeNumber}\\b`);
+
+/**
+ * pattern to match HEVC within square brackets.
+ * Matches [HEVC], [1080p AMZN WEBRip HEVC EAC3], etc.
+ */
+const hevc = /\[.*HEVC.*\]/i;
+
+export const patterns = { seasonAndEpisode, versioned, resolution, episodeNumberPattern, hevc };

@@ -2,12 +2,15 @@ export type EpisodeAttributes = {
   version?: number;
   encoding?: string;
   resolution?: number;
+  timestamp?: number;
   season: number;
 };
 
 export type TorrentData = {
   title: string;
   magnetLink: string;
+  size: string;
+  timestamp: number;
   path?: string;
 };
 

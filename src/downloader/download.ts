@@ -1,6 +1,6 @@
 import * as cliProgress from "cli-progress";
 import WebTorrent from "webtorrent";
-import { checkFolder, getFileList, removeFile, renameFile } from "./filesystem.ts";
+import { checkFolder, getDateModified, getFileList, removeFile, renameFile } from "./filesystem.ts";
 import { logger } from "./logger.ts";
 import { scrapeNyaaSearchResults } from "./nyaa.ts";
 import { patterns } from "./patterns.ts";
@@ -175,8 +175,19 @@ const versionedEpisodes = (
     return true;
   }
 
-  // Get the highest version number
   const versionedPattern = patterns.versioned(episodeKey);
+
+  // Check if any of the duplicate episodes have a version
+  const hasVersion = duplicateEpisodes.some((result) => {
+    const versionMatch = result.title.match(versionedPattern);
+    return versionMatch !== null;
+  });
+
+  if (!hasVersion) {
+    return true;
+  }
+
+  // Get the highest version number
   const highestVersion = duplicateEpisodes.reduce((maxVersion, result) => {
     const versionMatch = result.title.match(versionedPattern);
     const version = versionMatch ? parseInt(versionMatch[1], 10) : 1;
@@ -216,8 +227,19 @@ const resolutionedEpisodes = (
   if (duplicateEpisodes.length <= 1) {
     return true;
   }
-  // Get the highest resolution
   const resolutionPattern = patterns.resolution;
+
+  // Check if any of the duplicate episodes match the resolution pattern
+  const hasResolution = duplicateEpisodes.some((result) => {
+    const resolutionMatch = result.title.match(resolutionPattern);
+    return resolutionMatch !== null;
+  });
+
+  if (!hasResolution) {
+    return true;
+  }
+
+  // Get the highest resolution
   const highestResolution = duplicateEpisodes.reduce(
     (maxResolution, result) => {
       const resolutionMatch = result.title.match(resolutionPattern);
@@ -262,6 +284,7 @@ const hevcEpisodes = (
   if (duplicateEpisodes.length <= 1) {
     return true;
   }
+
   // Check if any result is HEVC
   const hasHEVC = duplicateEpisodes.some((result) =>
     patterns.hevc.test(result.title),
@@ -271,6 +294,43 @@ const hevcEpisodes = (
   }
   flagEpisodesForCleanup(episodeKey, seasonKey, { encoding: "HEVC" });
   return patterns.hevc.test(episode.title);
+};
+
+/**
+ * Remove duplicate episodes, keep the one with the latest timestamp.
+ * @param available Full list of results
+ * @param anime The DownloadEntry
+ * @param episode The item to check
+ * @returns boolean
+ */
+const latestTimestampEpisodes = (
+  available: TorrentData[],
+  anime: DownloadEntry,
+  episode: TorrentData,
+) => {
+  // Can't determine episode key, remove item
+  const episodeKey = getEpisodeKey(anime, episode.title);
+  if (episodeKey === null) {
+    return false;
+  }
+
+  const seasonKey = getSeasonKey(anime, episode.title);
+
+  // Only one result, keep it
+  const duplicateEpisodes = getDuplicateEpisodes(available, anime, episodeKey);
+  if (duplicateEpisodes.length <= 1) {
+    return true;
+  }
+
+  // Get the latest timestamp
+  const latestTimestamp = duplicateEpisodes.reduce((maxTimestamp, result) => {
+    return Math.max(maxTimestamp, result.timestamp);
+  }, 0);
+
+  flagEpisodesForCleanup(episodeKey, seasonKey, { timestamp: latestTimestamp });
+
+  // Only keep the episode with the latest timestamp
+  return episode.timestamp === latestTimestamp;
 };
 
 /**
@@ -304,6 +364,7 @@ const episodeCleanupHandler = (
         if (!file.includes(version)) {
           logger.info(`Removing old version: ${file}`);
           removeFile(`${episodePath}/${file}`);
+          return;
         }
       }
 
@@ -313,6 +374,7 @@ const episodeCleanupHandler = (
         if (!file.includes(resolution)) {
           logger.info(`Removing old resolution: ${file}`);
           removeFile(`${episodePath}/${file}`);
+          return;
         }
       }
 
@@ -321,6 +383,19 @@ const episodeCleanupHandler = (
         if (!file.includes(attributes.encoding)) {
           logger.info(`Removing old encoding: ${file}`);
           removeFile(`${episodePath}/${file}`);
+          return;
+        }
+      }
+
+      // Handle timestamped episodes
+      if (attributes.timestamp) {
+        const filePath = `${episodePath}/${file}`;
+        const timestamp = attributes.timestamp * 1000; // Convert to milliseconds
+        const fileModifiedTime = getDateModified(filePath).getTime();
+        if (fileModifiedTime < timestamp) {
+          logger.info(`Removing old timestamp: ${file}`);
+          removeFile(filePath);
+          return;
         }
       }
     });
@@ -429,6 +504,10 @@ export const handleDownloadingNewEpisodes = async (
       );
       specialFilters = specialFilters.filter((episode) =>
         versionedEpisodes(specialFilters, anime, episode),
+      );
+
+      specialFilters = specialFilters.filter((episode) =>
+        latestTimestampEpisodes(specialFilters, anime, episode),
       );
 
       // Cleanup special episodes

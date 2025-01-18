@@ -88,3 +88,13 @@ export const getDownloadListFromFile = (filePath: string): DownloadList => {
     return {};
   }
 };
+
+/**
+ * Get the date modified of a file.
+ * @param filePath path to the file
+ * @returns Date object representing the last modified time
+ */
+export const getDateModified = (filePath: string): Date => {
+  const stats = fs.statSync(filePath);
+  return stats.mtime;
+};

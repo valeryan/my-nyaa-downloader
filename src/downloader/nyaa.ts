@@ -10,9 +10,9 @@ const appConfig = getAppConfig();
  * @returns URL to the Nyaa search results page
  */
 const buildNyaaSearchUrl = (uploader: string, query: string): string => {
-  const encodedUploader = encodeURIComponent(uploader);
+  const encodedUploader = uploader !== 'Anonymous' ? `/user/${encodeURIComponent(uploader)}` : "/";
   const encodedQuery = encodeURIComponent(query);
-  return `${appConfig.nyaaUrl}/user/${encodedUploader}?f=0&c=1_2&q=${encodedQuery}`;
+  return `${appConfig.nyaaUrl}${encodedUploader}?f=0&c=1_2&q=${encodedQuery}`;
 };
 
 /**
@@ -44,7 +44,10 @@ export const scrapeNyaaSearchResults = async ({
         const magnetLink =
           $(row).find('td:nth-child(3) a[href^="magnet"]').attr("href") || "";
 
-        return { title, magnetLink };
+          const size = $(row).find("td:nth-child(4)").text().trim();
+          const timestamp = parseInt($(row).find("td:nth-child(5)").attr("data-timestamp") || "0");
+
+          return { title, magnetLink, size, timestamp };
       })
       .get();
 

@@ -4,7 +4,7 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
 
 # Connect to NordVPN
-nordvpn connect
+# nordvpn connect
 
 # Change to your project directory
 cd /data/Projects/nyaa-downloader
@@ -13,4 +13,4 @@ cd /data/Projects/nyaa-downloader
 npm run downloader
 
 # Disconnect from NordVPN after npm command completes
-nordvpn disconnect
+# nordvpn disconnect

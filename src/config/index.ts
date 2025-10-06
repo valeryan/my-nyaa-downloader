@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-import { AppConfig, SmtpConfig } from "./types.ts";
+import { AppConfig, SmtpConfig } from "../types";
 
 dotenv.config(); // Load environment variables from .env file
 

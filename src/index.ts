@@ -1,17 +1,17 @@
 import path, { dirname } from "path";
 import { fileURLToPath } from "url";
-import { getAppConfig } from "./configuration.ts";
-import { handleDownloadingNewEpisodes } from "./download.ts";
-import { getDownloadListFromFile } from "./filesystem.ts";
-import { sendEmailReport } from "./mailer.ts";
-import type { DownloadEntry, TrackerData, TrackerGroup } from "./types.ts";
+import { getAppConfig } from "./config";
+import { handleDownloadingNewEpisodes } from "./services/download";
+import { sendEmailReport } from "./services/email";
+import type { DownloadEntry, TrackerData, TrackerGroup } from "./types";
+import { getDownloadListFromFile } from "./utils/file";
 
 const config = getAppConfig();
 const downloadFolderPath = config.downloadFolder;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const metaFilePath = path.join(__dirname, "../../download_list.json");
+const metaFilePath = path.join(__dirname, "../download_list.json");
 
 (async () => {
   try {

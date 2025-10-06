@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { DownloadEntry, DownloadList, EntryFileList } from "./types.ts";
+import type { DownloadEntry, DownloadList, EntryFileList } from "../types";
 
 /**
  * Check if a folder exists, if not create it.

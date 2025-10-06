@@ -1,14 +1,13 @@
 import nodemailer from "nodemailer";
-import { getAppConfig } from "./configuration.ts";
-import { TrackerGroup } from "./types.ts";
-
-const appConfig = getAppConfig();
+import { getAppConfig } from "../config";
+import { TrackerGroup } from "../types";
 
 /**
  * Function to send email report with the collected information.
  * @param trackerGroups the tracker groups to send in the email
  */
 export const sendEmailReport = async (trackerGroups: TrackerGroup) => {
+  const appConfig = getAppConfig();
   const transporter = nodemailer.createTransport({
     host: appConfig.smtp.host,
     port: appConfig.smtp.port,

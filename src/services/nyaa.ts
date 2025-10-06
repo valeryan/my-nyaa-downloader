@@ -1,8 +1,7 @@
 import { load } from "cheerio";
-import { getAppConfig } from "./configuration.ts";
-import { DownloadEntry, TorrentData } from "./types.ts";
+import { getAppConfig } from "../config";
+import { DownloadEntry, TorrentData } from "../types";
 
-const appConfig = getAppConfig();
 /**
  * Build a URL to the Nyaa search results page for the given uploader and query.
  * @param uploader name of the uploader
@@ -10,6 +9,7 @@ const appConfig = getAppConfig();
  * @returns URL to the Nyaa search results page
  */
 const buildNyaaSearchUrl = (uploader: string, query: string): string => {
+  const appConfig = getAppConfig();
   const encodedUploader = uploader !== 'Anonymous' ? `/user/${encodeURIComponent(uploader)}` : "/";
   const encodedQuery = encodeURIComponent(query);
   return `${appConfig.nyaaUrl}${encodedUploader}?f=0&c=1_2&q=${encodedQuery}`;

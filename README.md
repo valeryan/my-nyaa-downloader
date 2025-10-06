@@ -1,6 +1,32 @@
 ## Nyaa Downloader
 This code is garbage for me to be able to auto download anime from nyaa.si to my jellyfin server.
 
+## Development
+
+### Running the Application
+```bash
+npm run downloader
+```
+
+### Testing
+```bash
+# Run tests once
+npm run test:run
+
+# Run tests in watch mode
+npm test
+
+# Run tests with coverage
+npm run test:coverage
+```
+
+### Technology Stack
+- **Runtime**: Node.js with TSX (TypeScript execution)
+- **Testing**: Vitest with coverage
+- **Language**: TypeScript (ESM modules)
+
+## Configuration
+
 The .env file provides the following variables:
 ```
 NYAA_URL=https://nyaa.si

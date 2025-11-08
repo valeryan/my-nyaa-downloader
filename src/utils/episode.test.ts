@@ -14,19 +14,8 @@ import {
 } from "./episode";
 
 // Mock the file utilities
-vi.mock("./file", () => ({
-  checkFolder: vi.fn(),
-  getDateModified: vi.fn(() => new Date()),
-  removeFile: vi.fn(),
-}));
-
-vi.mock("./logger", () => ({
-  logger: {
-    info: vi.fn(),
-    error: vi.fn(),
-    header: vi.fn(),
-  },
-}));
+vi.mock("./file");
+vi.mock("./logger");
 
 // Mocks
 const mockDownloadEntry: DownloadEntry = {

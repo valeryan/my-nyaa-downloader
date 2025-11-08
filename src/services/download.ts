@@ -28,7 +28,7 @@ export const handleDownloadingNewEpisodes = async (
   for (const anime of downloads) {
     // Skip completed entries
     if (anime.complete) {
-      logger.info(`${anime.folder} - already complete.`);
+      logger.debug(`${anime.folder} - already complete.`);
       continue;
     }
 

@@ -4,15 +4,8 @@ import { logger } from "../utils/logger";
 import { chunkArray, downloadTorrent } from "./torrent";
 
 // Mock dependencies
-vi.mock("../utils/file", () => ({
-  renameFile: vi.fn(),
-}));
-
-vi.mock("../utils/logger", () => ({
-  logger: {
-    error: vi.fn(),
-  },
-}));
+vi.mock("../utils/file");
+vi.mock("../utils/logger");
 
 describe("torrent service", () => {
   beforeEach(() => {
@@ -154,8 +147,8 @@ describe("torrent service", () => {
       );
       /* eslint-enable @typescript-eslint/no-explicit-any */
 
-      await expect(promise).rejects.toBe(testError);
-      expect(logger.error).toHaveBeenCalledWith("Error downloading torrent:", testError);
+      await expect(promise).rejects.toThrow("Failed to download after 3 attempts");
+      expect(logger.error).toHaveBeenCalledWith("Torrent error:", testError);
     });
 
     it("should update progress during download", async () => {

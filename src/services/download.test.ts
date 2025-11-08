@@ -20,18 +20,8 @@ vi.mock("../utils/episode", () => ({
   cleanupEpisodesHandler: vi.fn(),
 }));
 
-vi.mock("../utils/file", () => ({
-  getFileList: vi.fn(),
-}));
-
-vi.mock("../utils/logger", () => ({
-  logger: {
-    header: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
-}));
+vi.mock("../utils/file");
+vi.mock("../utils/logger");
 
 describe("download service", () => {
   const mockDownloadList: DownloadEntry[] = [

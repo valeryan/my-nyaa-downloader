@@ -15,6 +15,7 @@ import {
 import { getFileList } from "../utils/file";
 import { logger } from "../utils/logger";
 import { scrapeNyaaSearchResults } from "./nyaa";
+import { handleSeasonPackDownload } from "./seasonpack";
 import { chunkArray, downloadTorrent } from "./torrent";
 
 export const handleDownloadingNewEpisodes = async (
@@ -29,6 +30,12 @@ export const handleDownloadingNewEpisodes = async (
     // Skip completed entries
     if (anime.complete) {
       logger.debug(`${anime.folder} - already complete.`);
+      continue;
+    }
+
+    // Handle season packs separately
+    if (anime.seasonPack) {
+      await handleSeasonPackDownload(rootFolderPath, anime, downloadTracker);
       continue;
     }
 
@@ -52,12 +59,15 @@ export const handleDownloadingNewEpisodes = async (
       let specialFilters = validEpisodes.filter((episode) =>
         filterByResolution(validEpisodes, episode),
       );
+
       specialFilters = specialFilters.filter((episode) =>
         filterByHEVC(validEpisodes, episode),
       );
+
       specialFilters = specialFilters.filter((episode) =>
         filterByVersion(validEpisodes, episode),
       );
+
       specialFilters = specialFilters.filter((episode) =>
         filterByLatestTimestamp(validEpisodes, episode),
       );

@@ -5,8 +5,11 @@
       "type": "node",
       "request": "launch",
       "name": "Debug Downloader",
-      "runtimeArgs": ["--no-warnings", "--loader", "ts-node/esm"],
-      "program": "${workspaceFolder}/src/downloader/handler.ts"
+      "runtimeExecutable": "tsx",
+      "runtimeArgs": ["--no-warnings"],
+      "args": ["${workspaceFolder}/src/index.ts"],
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
     }
   ]
 }

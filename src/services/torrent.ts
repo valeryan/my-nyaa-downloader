@@ -5,11 +5,13 @@ import { logger } from "../utils/logger";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const cleanupTorrent = (torrent: WebTorrent.Torrent) => {
+const cleanupTorrent = (torrent: WebTorrent.Torrent, client: WebTorrent.Instance) => {
   try {
-    if (torrent) {
+    if (torrent && client) {
       torrent.removeAllListeners();
-      torrent.destroy();
+      // Use client.remove instead of torrent.destroy to properly cleanup
+      // This prevents "Cannot read properties of null (reading '_debugId')" errors
+      client.remove(torrent);
     }
   } catch {
     // Ignore cleanup errors
@@ -74,7 +76,7 @@ const downloadTorrentAttempt = async (
         bar = null;
       }
       if (torrent) {
-        cleanupTorrent(torrent);
+        cleanupTorrent(torrent, client);
         torrent = null;
       }
       if (error) {
@@ -103,7 +105,7 @@ const downloadTorrentAttempt = async (
           timeout = null;
         }
 
-        bar = multiBar.create(torrent.length, 0);
+        bar = multiBar.create(torrent.length, 0, { filename: torrent.name });
 
         torrent.on("download", () => {
           if (bar && torrent) {
@@ -113,14 +115,30 @@ const downloadTorrentAttempt = async (
 
         torrent.on("done", async () => {
           try {
+            if (!torrent) {
+              cleanup("Torrent became null");
+              return;
+            }
+
+            // Check if any data was actually downloaded
+            if (torrent.downloaded === 0 || torrent.length === 0) {
+              const error = `Torrent completed with no data: ${torrent.name}`;
+              logger.warn(error);
+              cleanup(error);
+              return;
+            }
+
             if (bar) {
+              bar.update(torrent.length, { filename: torrent.name });
               bar.stop();
               bar = null;
             }
-            if (torrent && torrent.files.length === 1) {
+
+            if (torrent.files.length === 1) {
               const file = torrent.files[0];
               await renameFile(file.path, torrent.name, outputPath);
             }
+
             cleanup();
             resolve();
           } catch (error) {

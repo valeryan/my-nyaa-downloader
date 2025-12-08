@@ -124,7 +124,7 @@ describe("torrent service", () => {
       await promise;
 
       expect(mockClient.add).toHaveBeenCalledWith("magnet:test", { path: "/output/path" });
-      expect(mockMultiBar.create).toHaveBeenCalledWith(1000, 0);
+      expect(mockMultiBar.create).toHaveBeenCalledWith(1000, 0, { filename: "test-torrent.mkv" });
       expect(mockBar.stop).toHaveBeenCalled();
       expect(renameFile).toHaveBeenCalledWith("/test/path.mkv", "test-torrent.mkv", "/output/path");
     });

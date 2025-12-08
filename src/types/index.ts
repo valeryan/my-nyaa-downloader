@@ -20,6 +20,7 @@ export type DownloadEntry = {
   query: string;
   complete: boolean;
   pattern?: string;
+  seasonPack?: boolean;
 };
 
 export type DownloadList = {

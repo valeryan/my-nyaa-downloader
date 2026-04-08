@@ -4,6 +4,7 @@
     "uploader": "Ember_Encodes",
     "query": "[EMBER] Series Title",
     "complete": false,
+    "sukebei": false,
     "pattern": "Optional Regex Pattern"
   }
 }

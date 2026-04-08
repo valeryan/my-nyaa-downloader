@@ -18,6 +18,7 @@ global.fetch = vi.fn();
 describe("nyaa service", () => {
   const mockConfig = {
     nyaaUrl: "https://nyaa.si",
+    sukebeiUrl: "https://sukebei.nyaa.si",
     downloadFolder: "/downloads",
     smtp: {
       host: "smtp.test.com",
@@ -212,6 +213,60 @@ describe("nyaa service", () => {
 
       expect(fetch).toHaveBeenCalledWith(
         "https://nyaa.si/user/User%20With%20Spaces?f=0&c=1_2&q=anime%20with%20special%20chars%20%26%20symbols"
+      );
+    });
+
+    it("should allow Sukebei mode for anonymous uploads", async () => {
+      const sukebeiEntry: DownloadEntry = {
+        ...mockDownloadEntry,
+        uploader: "Anonymous",
+        sukebei: true,
+      };
+
+      const mockResponse = {
+        text: vi.fn().mockResolvedValue("<div></div>"),
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(fetch).mockResolvedValue(mockResponse as any);
+
+      const { load } = await import("cheerio");
+      vi.mocked(load).mockReturnValue((() => ({
+        map: () => ({ get: () => [] }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      })) as any);
+
+      await scrapeNyaaSearchResults(sukebeiEntry);
+
+      expect(fetch).toHaveBeenCalledWith(
+        "https://sukebei.nyaa.si/?f=0&c=0_0&q=test%20anime"
+      );
+    });
+
+    it("should allow Sukebei mode for named uploaders", async () => {
+      const sukebeiEntry: DownloadEntry = {
+        ...mockDownloadEntry,
+        uploader: "HentaiHub",
+        sukebei: true,
+      };
+
+      const mockResponse = {
+        text: vi.fn().mockResolvedValue("<div></div>"),
+      };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vi.mocked(fetch).mockResolvedValue(mockResponse as any);
+
+      const { load } = await import("cheerio");
+      vi.mocked(load).mockReturnValue((() => ({
+        map: () => ({ get: () => [] }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      })) as any);
+
+      await scrapeNyaaSearchResults(sukebeiEntry);
+
+      expect(fetch).toHaveBeenCalledWith(
+        "https://sukebei.nyaa.si/user/HentaiHub?f=0&c=0_0&q=test%20anime"
       );
     });
   });

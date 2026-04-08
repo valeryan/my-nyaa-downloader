@@ -1,16 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import type { DownloadEntry, EntryFileList, TorrentData } from "../types/index";
 import {
-  filterByHEVC,
-  filterByLatestTimestamp,
-  filterByResolution,
-  filterByVersion,
-  filterExistingEpisodes,
-  resolveAllEpisodes,
-  resolveAnimePattern,
-  resolveEpisodeInfo,
-  setEpisodePath,
-  validatePattern,
+    filterByHEVC,
+    filterByLatestTimestamp,
+    filterByResolution,
+    filterByVersion,
+    filterExistingEpisodes,
+    resolveAllEpisodes,
+    resolveAnimePattern,
+    resolveEpisodeInfo,
+    setEpisodePath,
+    validatePattern,
 } from "./episode";
 
 // Mock the file utilities
@@ -40,7 +40,7 @@ const mockTorrentList: TorrentData[] = [
 ];
 
 const mockFileList: EntryFileList = {
-  "Season 1": ["Anime S01E01 720p.mkv", "Anime S01E01 1080p.mkv"],
+  "Season 01": ["Anime S01E01 720p.mkv", "Anime S01E01 1080p.mkv"],
 };
 
 describe("validatePattern", () => {
@@ -76,7 +76,7 @@ it("returns valid episode info when pattern matches", () => {
   const pattern = /(S\d+)E(\d+)/;
   const result = resolveEpisodeInfo(mockTorrentData, pattern);
   expect(result.isValid).toBe(true);
-  expect(result.seasonNumber).toBe(1);
+  expect(result.seasonNumber).toBe("01");
   expect(result.episodeNumber).toBe("02");
   expect(result.episodeKey).toBe("S01E02");
 });
@@ -105,7 +105,7 @@ it("sets path for valid episode", () => {
   const anime = resolveAnimePattern(mockDownloadEntry, mockTorrentData.title);
   const episode = resolveEpisodeInfo(mockTorrentData, anime.resolvedPattern);
   const result = setEpisodePath("/downloads", anime, episode);
-  expect(result.path).toContain("/downloads/Anime/Season 1");
+  expect(result.path).toContain("/downloads/Anime/Season 01");
 });
 it("does not set path for invalid episode", () => {
   const anime = resolveAnimePattern(mockDownloadEntry, "no match");

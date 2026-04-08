@@ -9,7 +9,7 @@ import { patterns } from "./patterns";
 
 export interface ResolvedEpisode extends TorrentData {
   pattern: RegExp | null;
-  seasonNumber: number;
+  seasonNumber: string;
   episodeNumber: string;
   episodeKey: string | null;
   isValid: boolean;
@@ -85,7 +85,7 @@ export const resolveEpisodeInfo = (
     return {
       ...torrentData,
       pattern: null,
-      seasonNumber: 1,
+      seasonNumber: '01',
       episodeNumber: "",
       episodeKey: null,
       isValid: false,
@@ -97,7 +97,7 @@ export const resolveEpisodeInfo = (
     return {
       ...torrentData,
       pattern,
-      seasonNumber: 1,
+      seasonNumber: '01',
       episodeNumber: "",
       episodeKey: null,
       isValid: false,
@@ -114,11 +114,12 @@ export const resolveEpisodeInfo = (
 
   const episodeNumber = match[2];
   const episodeKey = match[0];
+  const paddedSeasonNumber = seasonNumber.toString().padStart(2, '0');
 
   return {
     ...torrentData,
     pattern,
-    seasonNumber,
+    seasonNumber: paddedSeasonNumber,
     episodeNumber,
     episodeKey,
     isValid: true,
@@ -181,7 +182,7 @@ const cleanupEpisodes: Map<string, EpisodeAttributes> = new Map();
  */
 const flagEpisodesForCleanup = (
   episodeKey: string,
-  seasonKey: number,
+  seasonKey: string,
   newAttributes: Partial<EpisodeAttributes>,
 ) => {
   const attributes = cleanupEpisodes.get(episodeKey) || {};

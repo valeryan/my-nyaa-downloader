@@ -3,7 +3,7 @@ export type EpisodeAttributes = {
   encoding?: string;
   resolution?: number;
   timestamp?: number;
-  season: number;
+  season: string;
 };
 
 export type TorrentData = {
@@ -19,6 +19,7 @@ export type DownloadEntry = {
   uploader: string;
   query: string;
   complete: boolean;
+  sukebei?: boolean;
   pattern?: string;
   seasonPack?: boolean;
 };
@@ -48,6 +49,7 @@ export type SmtpConfig = {
 
 export type AppConfig = {
   nyaaUrl: string;
+  sukebeiUrl: string;
   downloadFolder: string;
   smtp: SmtpConfig;
   reportEmail: string;

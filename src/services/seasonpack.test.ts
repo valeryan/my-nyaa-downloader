@@ -76,7 +76,7 @@ describe("handleSeasonPackDownload", () => {
 
     vi.mocked(scrapeNyaaSearchResults).mockResolvedValue([mockTorrent]);
     vi.mocked(getFileList).mockReturnValue({
-      "Season 1": [
+      "Season 01": [
         "[Gecko] 4 CUT HERO - S01E01.mkv",
         "[Gecko] 4 CUT HERO - S01E02.mkv",
       ],

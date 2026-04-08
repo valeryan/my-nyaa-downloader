@@ -6,13 +6,22 @@ import { DownloadEntry, TorrentData } from "../types";
  * Build a URL to the Nyaa search results page for the given uploader and query.
  * @param uploader name of the uploader
  * @param query search query
+ * @param sukebei whether this entry should search Sukebei instead of the main Nyaa site
  * @returns URL to the Nyaa search results page
  */
-const buildNyaaSearchUrl = (uploader: string, query: string): string => {
+const buildNyaaSearchUrl = (
+  uploader: string,
+  query: string,
+  sukebei?: boolean,
+): string => {
   const appConfig = getAppConfig();
+  const baseUrl = sukebei
+    ? appConfig.sukebeiUrl.replace(/\/+$/, "")
+    : appConfig.nyaaUrl.replace(/\/+$/, "");
+  const category = sukebei ? "0_0" : "1_2";
   const encodedUploader = uploader !== 'Anonymous' ? `/user/${encodeURIComponent(uploader)}` : "/";
   const encodedQuery = encodeURIComponent(query);
-  return `${appConfig.nyaaUrl}${encodedUploader}?f=0&c=1_2&q=${encodedQuery}`;
+  return `${baseUrl}${encodedUploader}?f=0&c=${category}&q=${encodedQuery}`;
 };
 
 /**
@@ -23,8 +32,9 @@ const buildNyaaSearchUrl = (uploader: string, query: string): string => {
 export const scrapeNyaaSearchResults = async ({
   uploader,
   query,
+  sukebei,
 }: DownloadEntry): Promise<TorrentData[]> => {
-  const searchUrl = buildNyaaSearchUrl(uploader, query);
+  const searchUrl = buildNyaaSearchUrl(uploader, query, sukebei);
   try {
     // Fetch the HTML content of the Nyaa search results page
     const response = await fetch(searchUrl);

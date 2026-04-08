@@ -15,7 +15,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  */
 interface SeasonPackFile {
   name: string;
-  seasonNumber: number;
+  seasonNumber: string;
   episodeNumber: string;
   isValid: boolean;
 }
@@ -45,10 +45,11 @@ const parseFileEpisodeInfo = (
       }
 
       const episodeNumber = match[2];
+      const paddedSeasonNumber = seasonNumber.toString().padStart(2, '0');
 
       return {
         name: filename,
-        seasonNumber,
+        seasonNumber: paddedSeasonNumber,
         episodeNumber,
         isValid: true,
       };
@@ -58,7 +59,7 @@ const parseFileEpisodeInfo = (
   // No pattern matched
   return {
     name: filename,
-    seasonNumber: 1,
+    seasonNumber: '01',
     episodeNumber: "",
     isValid: false,
   };

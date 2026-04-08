@@ -30,6 +30,7 @@ npm run test:coverage
 The .env file provides the following variables:
 ```
 NYAA_URL=https://nyaa.si
+SUKEBEI_URL=https://sukebei.nyaa.si
 DOWNLOAD_FOLDER=/example
 
 SMTP_HOST=smtp.gmail.com
@@ -48,6 +49,7 @@ The nyaa_meta.json file structure is as follows:
     "folder": "Series Title", // this folder will be created under the GroupFolder
     "uploader": "Ember_Encodes", // The search string needs each entry to be limited to an uploader
     "query": "[EMBER] Series Title", // the actual search string
+    "sukebei": false, // optional flag to search sukebei.nyaa.si instead of nyaa.si
     "complete": false // used to skip this entry. Can also be used as a pause feature.
   }
 }

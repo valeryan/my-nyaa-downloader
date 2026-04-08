@@ -1,10 +1,14 @@
 import dotenv from "dotenv";
 import { AppConfig, SmtpConfig } from "../types";
 
-dotenv.config(); // Load environment variables from .env file
+dotenv.config({ quiet: true }); // Load environment variables from .env file
 
 const getNyaaUrl = (): string => {
   return process.env.NYAA_URL || "https://nyaa.si";
+};
+
+const getSukebeiUrl = (): string => {
+  return process.env.SUKEBEI_URL || "https://sukebei.nyaa.si";
 };
 
 const getDownloadFolder = (): string => {
@@ -33,6 +37,7 @@ const getFromEmail = (): string => {
 export const getAppConfig = (): AppConfig => {
   return {
     nyaaUrl: getNyaaUrl(),
+    sukebeiUrl: getSukebeiUrl(),
     downloadFolder: getDownloadFolder(),
     smtp: getSmtpConfig(),
     reportEmail: getReportEmail(),

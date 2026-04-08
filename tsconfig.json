@@ -14,10 +14,6 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "allowImportingTsExtensions": true,
-    "baseUrl": "./src",
-    "paths": {
-      "*": ["*"]
-    },
     // TSX-specific optimizations
     "jsx": "preserve",
     "declaration": false,

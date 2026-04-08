@@ -3,3 +3,5 @@ node_modules
 download_list.json
 download.log
 /coverage
+dist
+download_list.json.bak

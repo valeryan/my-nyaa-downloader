@@ -8,6 +8,29 @@ This code is garbage for me to be able to auto download anime from nyaa.si to my
 npm run downloader
 ```
 
+### Running the JSON Editor (On Demand)
+```bash
+npm run editor
+```
+
+This builds the Vite frontend and then starts the local Express server.
+Open `http://127.0.0.1:4310`.
+
+Editor behavior:
+- Groups are read-only (the app edits entries inside existing groups only).
+- Saving sorts entries by `folder` inside each group.
+- Saving writes directly to `download_list.json` (no automatic `.bak` file creation).
+- You can start `npm run downloader` from the UI and watch live logs/progress.
+
+### Running the JSON Editor (Dev Shortcut)
+```bash
+npm run dev
+```
+
+This runs both:
+- Express API server on `http://127.0.0.1:4310`
+- Vite dev server on `http://127.0.0.1:5173` (with `/api` proxied to Express)
+
 ### Testing
 ```bash
 # Run tests once

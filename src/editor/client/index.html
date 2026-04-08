@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nyaa Download List Editor</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      }
+
+      body {
+        margin: 0;
+        padding: 1rem;
+        background: #f3f6fb;
+        color: #16213a;
+      }
+
+      main {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+
+      h1 {
+        margin: 0 0 1rem;
+      }
+
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+      }
+
+      button {
+        border: 1px solid #2a4b8d;
+        background: #ffffff;
+        color: #2a4b8d;
+        border-radius: 6px;
+        padding: 0.5rem 0.9rem;
+        cursor: pointer;
+      }
+
+      button.primary {
+        background: #2a4b8d;
+        color: #ffffff;
+      }
+
+      .group {
+        background: #ffffff;
+        border: 1px solid #ced6e8;
+        border-radius: 8px;
+        padding: 0.75rem;
+        margin-bottom: 1rem;
+      }
+
+      .group-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 0.5rem;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 0.75rem;
+      }
+
+      th,
+      td {
+        border: 1px solid #d9dfeb;
+        padding: 0.4rem;
+        font-size: 0.9rem;
+      }
+
+      th {
+        background: #ecf0f9;
+      }
+
+      input[type="text"] {
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid #c4cde2;
+        border-radius: 4px;
+        padding: 0.35rem;
+      }
+
+      .status {
+        min-height: 1.25rem;
+        margin-bottom: 1rem;
+        font-weight: 600;
+      }
+
+      .row-actions {
+        white-space: nowrap;
+      }
+
+      .modal[hidden] {
+        display: none;
+      }
+
+      .modal {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+      }
+
+      .modal-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(10, 20, 45, 0.45);
+      }
+
+      .modal-content {
+        position: relative;
+        margin: 5vh auto 0;
+        width: min(980px, calc(100% - 2rem));
+        max-height: 88vh;
+        overflow: auto;
+        background: #ffffff;
+        border: 1px solid #ced6e8;
+        border-radius: 10px;
+        padding: 0.85rem;
+      }
+
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.75rem;
+      }
+
+      .modal-title {
+        margin: 0;
+        font-size: 1.05rem;
+      }
+
+      .progress-list {
+        margin-top: 0.75rem;
+        display: grid;
+        gap: 0.5rem;
+      }
+
+      .progress-item {
+        border: 1px solid #d9dfeb;
+        border-radius: 6px;
+        padding: 0.45rem;
+        background: #f8faff;
+      }
+
+      .progress-meta {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        font-size: 0.85rem;
+        margin-bottom: 0.35rem;
+      }
+
+      .progress-bar {
+        width: 100%;
+        height: 0.55rem;
+      }
+
+      .log-output {
+        background: #0f172a;
+        color: #dbeafe;
+        border-radius: 6px;
+        padding: 0.65rem;
+        margin-top: 0.75rem;
+        max-height: 240px;
+        overflow: auto;
+        font-size: 0.8rem;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Download List Editor</h1>
+      <div class="toolbar">
+        <button id="reloadButton" type="button">Reload</button>
+        <button id="runDownloaderButton" type="button">Run Downloader</button>
+        <button id="saveButton" type="button" class="primary">Save (Sort by folder)</button>
+      </div>
+      <div id="status" class="status"></div>
+      <section id="groupsContainer"></section>
+      <datalist id="uploaderSuggestions"></datalist>
+
+      <section id="runModal" class="modal" hidden>
+        <div id="runModalBackdrop" class="modal-backdrop"></div>
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="runModalTitle">
+          <div class="modal-header">
+            <h2 id="runModalTitle" class="modal-title">Downloader Run</h2>
+            <button id="closeRunModalButton" type="button">Close</button>
+          </div>
+          <div id="runStatusText">Status: idle</div>
+          <div id="progressList" class="progress-list"></div>
+          <pre id="logOutput" class="log-output"></pre>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/app.ts"></script>
+  </body>
+</html>

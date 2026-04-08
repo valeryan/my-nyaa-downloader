@@ -6,6 +6,12 @@
   "main": "index.js",
   "scripts": {
     "downloader": "tsx src/index.ts",
+    "editor:api": "tsx src/editor/server.ts",
+    "editor:ui:build": "vite build --config vite.editor.config.ts",
+    "editor:ui:dev": "vite --config vite.editor.config.ts",
+    "editor:ui:typecheck": "tsc -p tsconfig.editor.json --noEmit",
+    "editor": "npm run editor:ui:build && npm run editor:api",
+    "dev": "concurrently \"npm:editor:api\" \"npm:editor:ui:dev\"",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
@@ -19,19 +25,23 @@
     "cheerio": "^1.1.2",
     "cli-progress": "^3.12.0",
     "dotenv": "^17.2.3",
+    "express": "^5.2.1",
     "nodemailer": "^7.0.11",
-    "webtorrent": "^2.8.5"
+    "webtorrent": "^2.8.5",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",
     "@eslint/js": "^9.39.1",
     "@types/cli-progress": "^3.11.6",
+    "@types/express": "^5.0.6",
     "@types/node": "^24.10.1",
     "@types/nodemailer": "^7.0.4",
     "@types/webtorrent": "^0.110.1",
     "@typescript-eslint/eslint-plugin": "^8.48.1",
     "@typescript-eslint/parser": "^8.48.1",
     "@vitest/coverage-v8": "^4.0.15",
+    "concurrently": "^9.2.1",
     "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-import-resolver-typescript": "^4.4.4",
@@ -41,6 +51,7 @@
     "prettier-plugin-organize-imports": "^4.3.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
+    "vite": "^7.3.2",
     "vitest": "^4.0.15"
   },
   "prettier": {

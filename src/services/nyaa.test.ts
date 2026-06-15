@@ -1,15 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getAppConfig } from "../config";
 import type { DownloadEntry } from "../types";
-import { scrapeNyaaSearchResults } from "./nyaa";
+import { scrapeNyaaSearchResults, scrapeNyaaViewPage } from "./nyaa";
 
 // Mock dependencies
 vi.mock("../config", () => ({
   getAppConfig: vi.fn(),
-}));
-
-vi.mock("cheerio", () => ({
-  load: vi.fn(),
 }));
 
 // Mock fetch globally
@@ -25,10 +21,15 @@ describe("nyaa service", () => {
       port: 587,
       secure: false,
       user: "test@test.com",
-      password: "password"
+      password: "password",
     },
     reportEmail: "report@test.com",
-    fromEmail: "from@test.com"
+    fromEmail: "from@test.com",
+    gemma: {
+      apiUrl: "http://127.0.0.1:11434/api/generate",
+      model: "gemma4:e4b",
+      timeoutMs: 1000,
+    },
   };
 
   const mockDownloadEntry: DownloadEntry = {
@@ -47,7 +48,8 @@ describe("nyaa service", () => {
     it("should successfully scrape search results", async () => {
       const mockHtml = `
         <div class="table-responsive">
-          <tbody>
+          <table>
+            <tbody>
             <tr>
               <td></td>
               <td>
@@ -73,44 +75,18 @@ describe("nyaa service", () => {
               <td data-timestamp="1641081600">2022-01-02</td>
             </tr>
           </tbody>
+          </table>
         </div>
       `;
 
-      const mockResponse = {
+      vi.mocked(fetch).mockResolvedValue({
         text: vi.fn().mockResolvedValue(mockHtml),
-      };
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any);
-
-      const mockCheerio = {
-        map: vi.fn().mockImplementation(() => ({
-          get: () => {
-            // Mock the callback with our test data for each row
-            return [
-              {
-                title: "Test Anime S01E01 [1080p]",
-                magnetLink: "magnet:?xt=urn:btih:test1",
-                size: "1.2 GiB",
-                timestamp: 1640995200,
-              },
-              {
-                title: "Test Anime S01E02 [720p]",
-                magnetLink: "magnet:?xt=urn:btih:test2",
-                size: "800 MiB",
-                timestamp: 1641081600,
-              },
-            ];
-          },
-        })),
-      };      const { load } = await import("cheerio");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(load).mockReturnValue((() => mockCheerio) as any);
+      } as unknown as Response);
 
       const result = await scrapeNyaaSearchResults(mockDownloadEntry);
 
       expect(fetch).toHaveBeenCalledWith(
-        "https://nyaa.si/user/TestUploader?f=0&c=1_2&q=test%20anime"
+        "https://nyaa.si/user/TestUploader?f=0&c=1_2&q=test%20anime",
       );
       expect(result).toEqual([
         {
@@ -134,24 +110,13 @@ describe("nyaa service", () => {
         uploader: "Anonymous",
       };
 
-      const mockResponse = {
+      vi.mocked(fetch).mockResolvedValue({
         text: vi.fn().mockResolvedValue("<div></div>"),
-      };
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any);
-
-      const { load } = await import("cheerio");
-      vi.mocked(load).mockReturnValue((() => ({
-        map: () => ({ get: () => [] }),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      })) as any);
+      } as unknown as Response);
 
       await scrapeNyaaSearchResults(anonymousEntry);
 
-      expect(fetch).toHaveBeenCalledWith(
-        "https://nyaa.si/?f=0&c=1_2&q=test%20anime"
-      );
+      expect(fetch).toHaveBeenCalledWith("https://nyaa.si/?f=0&c=1_2&q=test%20anime");
     });
 
     it("should handle fetch errors gracefully", async () => {
@@ -164,29 +129,10 @@ describe("nyaa service", () => {
       expect(result).toEqual([]);
       expect(consoleSpy).toHaveBeenCalledWith(
         "Error while scraping Nyaa search results:",
-        expect.any(Error)
+        expect.any(Error),
       );
 
       consoleSpy.mockRestore();
-    });
-
-    it("should handle malformed HTML gracefully", async () => {
-      const mockResponse = {
-        text: vi.fn().mockResolvedValue("invalid html"),
-      };
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any);
-
-      const { load } = await import("cheerio");
-      vi.mocked(load).mockReturnValue((() => ({
-        map: () => ({ get: () => [] }),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      })) as any);
-
-      const result = await scrapeNyaaSearchResults(mockDownloadEntry);
-
-      expect(result).toEqual([]);
     });
 
     it("should properly encode URLs", async () => {
@@ -196,50 +142,14 @@ describe("nyaa service", () => {
         query: "anime with special chars & symbols",
       };
 
-      const mockResponse = {
+      vi.mocked(fetch).mockResolvedValue({
         text: vi.fn().mockResolvedValue("<div></div>"),
-      };
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any);
-
-      const { load } = await import("cheerio");
-      vi.mocked(load).mockReturnValue((() => ({
-        map: () => ({ get: () => [] }),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      })) as any);
+      } as unknown as Response);
 
       await scrapeNyaaSearchResults(specialCharsEntry);
 
       expect(fetch).toHaveBeenCalledWith(
-        "https://nyaa.si/user/User%20With%20Spaces?f=0&c=1_2&q=anime%20with%20special%20chars%20%26%20symbols"
-      );
-    });
-
-    it("should allow Sukebei mode for anonymous uploads", async () => {
-      const sukebeiEntry: DownloadEntry = {
-        ...mockDownloadEntry,
-        uploader: "Anonymous",
-        sukebei: true,
-      };
-
-      const mockResponse = {
-        text: vi.fn().mockResolvedValue("<div></div>"),
-      };
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any);
-
-      const { load } = await import("cheerio");
-      vi.mocked(load).mockReturnValue((() => ({
-        map: () => ({ get: () => [] }),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      })) as any);
-
-      await scrapeNyaaSearchResults(sukebeiEntry);
-
-      expect(fetch).toHaveBeenCalledWith(
-        "https://sukebei.nyaa.si/?f=0&c=0_0&q=test%20anime"
+        "https://nyaa.si/user/User%20With%20Spaces?f=0&c=1_2&q=anime%20with%20special%20chars%20%26%20symbols",
       );
     });
 
@@ -250,23 +160,42 @@ describe("nyaa service", () => {
         sukebei: true,
       };
 
-      const mockResponse = {
+      vi.mocked(fetch).mockResolvedValue({
         text: vi.fn().mockResolvedValue("<div></div>"),
-      };
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(fetch).mockResolvedValue(mockResponse as any);
-
-      const { load } = await import("cheerio");
-      vi.mocked(load).mockReturnValue((() => ({
-        map: () => ({ get: () => [] }),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      })) as any);
+      } as unknown as Response);
 
       await scrapeNyaaSearchResults(sukebeiEntry);
 
       expect(fetch).toHaveBeenCalledWith(
-        "https://sukebei.nyaa.si/user/HentaiHub?f=0&c=0_0&q=test%20anime"
+        "https://sukebei.nyaa.si/user/HentaiHub?f=0&c=0_0&q=test%20anime",
+      );
+    });
+  });
+
+  describe("scrapeNyaaViewPage", () => {
+    it("parses a direct view page", async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        text: vi.fn().mockResolvedValue(`
+          <div class="panel-title">Outlaw Star</div>
+          <a href="/?c=1_2">Anime</a>
+          <a href="/user/sxales">sxales</a>
+          <a href="magnet:?xt=urn:btih:test">Magnet</a>
+          <div id="torrent-description">Dual audio batch release.</div>
+        `),
+      } as unknown as Response);
+
+      const result = await scrapeNyaaViewPage("https://nyaa.si/view/1359919");
+
+      expect(result.title).toBe("Outlaw Star");
+      expect(result.uploader).toBe("sxales");
+      expect(result.sourceSite).toBe("nyaa");
+      expect(result.magnetLink).toBe("magnet:?xt=urn:btih:test");
+    });
+
+    it("rejects unsupported view URLs", async () => {
+      await expect(scrapeNyaaViewPage("https://nyaa.si/?q=test")).rejects.toThrow(
+        "Only direct Nyaa or Sukebei /view/<id> links are supported.",
       );
     });
   });

@@ -22,24 +22,23 @@ export const removeFile = (filePath: string): void => {
   }
 };
 
-
 /**
  * Rename the file to match the torrent name with its original extension.
- * @param file The torrent file
- * @param torrentName Name of the torrent
+ * @param oldName Current file name
+ * @param newName New torrent name
  * @param outputPath Path to the output directory
  */
 export const renameFile = async (oldName: string, newName: string, outputPath: string): Promise<void> => {
-  // Strip the extension from newName
+  // Strip the extension from newName.
   newName = newName.replace(/\.[^/.]+$/, "");
   const originalFilePath = path.join(outputPath, oldName);
   const extension = path.extname(oldName);
   const newFileName = `${newName}${extension}`;
   const newFilePath = path.join(outputPath, newFileName);
 
-  // Check if the original and new file paths are the same
+  // Check if the original and new file paths are the same.
   if (originalFilePath === newFilePath) {
-    return; // Early return if paths are the same
+    return;
   }
 
   fs.promises.rename(originalFilePath, newFilePath);
@@ -56,7 +55,8 @@ export const getFileList = (
   entry: DownloadEntry,
 ): EntryFileList => {
   const folderPath = path.join(rootFolderPath, entry.folder);
-  // Create the folder if it doesn't exist
+
+  // Create the folder if it doesn't exist.
   checkFolder(folderPath);
 
   const result: EntryFileList = {};
@@ -87,6 +87,16 @@ export const getDownloadListFromFile = (filePath: string): DownloadList => {
     console.error("Error reading meta file:", error);
     return {};
   }
+};
+
+/**
+ * Write the download list back to disk.
+ * @param filePath path to the download list file
+ * @param downloadList download list contents
+ */
+export const writeDownloadListToFile = (filePath: string, downloadList: DownloadList): void => {
+  fs.writeFileSync(filePath, `${JSON.stringify(downloadList, null, 2)}
+`, "utf-8");
 };
 
 /**

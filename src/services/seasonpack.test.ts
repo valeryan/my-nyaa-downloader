@@ -3,11 +3,18 @@ import type { DownloadEntry, TrackerData } from "../types";
 import { handleSeasonPackDownload } from "./seasonpack";
 
 // Mock dependencies
-vi.mock("./nyaa");
-vi.mock("../utils/file");
+vi.mock("./nyaa", () => ({
+  scrapeNyaaSearchResults: vi.fn(),
+}));
+
+vi.mock("./torrent-metadata", () => ({
+  getTorrentFileList: vi.fn(),
+}));
+
 vi.mock("../utils/logger");
-vi.mock("../utils/episode");
-vi.mock("./torrent");
+vi.mock("../utils/episode", () => ({
+  resolveAnimePattern: vi.fn((entry) => ({ ...entry, resolvedPattern: /S(\d+)E(\d+)/i })),
+}));
 
 const mockDownloadEntry: DownloadEntry = {
   folder: "4 Cut Hero",
@@ -25,7 +32,7 @@ describe("handleSeasonPackDownload", () => {
     vi.clearAllMocks();
   });
 
-  it("returns tracker unchanged if no season packs found", async () => {
+  it("returns false if no season packs are found", async () => {
     const { scrapeNyaaSearchResults } = await import("./nyaa");
     vi.mocked(scrapeNyaaSearchResults).mockResolvedValue([]);
 
@@ -35,58 +42,33 @@ describe("handleSeasonPackDownload", () => {
       downloadTracker,
     );
 
-    expect(result).toEqual([]);
+    expect(result).toBe(false);
+    expect(downloadTracker).toEqual([]);
   });
 
-  it("handles season pack download when episodes are missing", async () => {
-    const mockTorrent = {
-      title: "[Gecko] 4 CUT HERO - S01",
-      magnetLink: "magnet:test",
-      size: "1GB",
-      timestamp: 1234567890,
-    };
-
+  it("returns false when the pack contains no video files", async () => {
     const { scrapeNyaaSearchResults } = await import("./nyaa");
-    const { getFileList } = await import("../utils/file");
-    const { resolveAnimePattern } = await import("../utils/episode");
+    const { getTorrentFileList } = await import("./torrent-metadata");
 
-    vi.mocked(scrapeNyaaSearchResults).mockResolvedValue([mockTorrent]);
-    vi.mocked(getFileList).mockReturnValue({});
-    vi.mocked(resolveAnimePattern).mockReturnValue({
-      ...mockDownloadEntry,
-      resolvedPattern: /S(\d+)E(\d+)/i,
-    });
+    vi.mocked(scrapeNyaaSearchResults).mockResolvedValue([
+      {
+        title: "[Gecko] 4 CUT HERO - S01",
+        magnetLink: "magnet:test",
+        size: "1GB",
+        timestamp: 1234567890,
+      },
+    ]);
+    vi.mocked(getTorrentFileList).mockResolvedValue([
+      { name: "README.txt", path: "README.txt" },
+    ]);
 
-    // Note: Full integration test would require mocking WebTorrent
-    // This is a basic structure test
-    expect(handleSeasonPackDownload).toBeDefined();
-  });
+    const result = await handleSeasonPackDownload(
+      "/downloads/Anime",
+      mockDownloadEntry,
+      downloadTracker,
+    );
 
-  it("skips download if all episodes already exist", async () => {
-    const mockTorrent = {
-      title: "[Gecko] 4 CUT HERO - S01",
-      magnetLink: "magnet:test",
-      size: "1GB",
-      timestamp: 1234567890,
-    };
-
-    const { scrapeNyaaSearchResults } = await import("./nyaa");
-    const { getFileList } = await import("../utils/file");
-    const { resolveAnimePattern } = await import("../utils/episode");
-
-    vi.mocked(scrapeNyaaSearchResults).mockResolvedValue([mockTorrent]);
-    vi.mocked(getFileList).mockReturnValue({
-      "Season 01": [
-        "[Gecko] 4 CUT HERO - S01E01.mkv",
-        "[Gecko] 4 CUT HERO - S01E02.mkv",
-      ],
-    });
-    vi.mocked(resolveAnimePattern).mockReturnValue({
-      ...mockDownloadEntry,
-      resolvedPattern: /S(\d+)E(\d+)/i,
-    });
-
-    // This would need WebTorrent mocking for full test
-    expect(handleSeasonPackDownload).toBeDefined();
+    expect(result).toBe(false);
+    expect(downloadTracker).toEqual([]);
   });
 });

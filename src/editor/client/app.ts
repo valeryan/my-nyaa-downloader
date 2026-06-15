@@ -10,12 +10,44 @@ type DownloadEntry = {
 
 type DownloadList = Record<string, DownloadEntry[]>;
 
+type GroupSection = "regular" | "seasonPacks";
+type SourceSite = "nyaa" | "sukebei";
+
+type ImportSuggestionReasons = {
+  placement?: string;
+  section?: string;
+  folder?: string;
+  query?: string;
+  pattern?: string;
+};
+
+type ImportSuggestionFields = {
+  folder: string;
+  uploader: string;
+  query: string;
+  pattern?: string;
+};
+
+type ImportSuggestion = {
+  suggestedGroup: string;
+  suggestedSection: GroupSection;
+  fields: ImportSuggestionFields;
+  sourceSite: SourceSite;
+  warnings: string[];
+  rawTitle?: string;
+  reasons?: ImportSuggestionReasons;
+};
+
 type State = {
   downloadList: DownloadList;
+  persistedSnapshot: string;
+  hasUnsavedChanges: boolean;
 };
 
 const state: State = {
   downloadList: {},
+  persistedSnapshot: "{}",
+  hasUnsavedChanges: false,
 };
 
 type RunStatus = "idle" | "running" | "success" | "failed";
@@ -43,12 +75,37 @@ const downloaderState: DownloaderStatusPayload = {
   progress: [],
 };
 
+let currentImportSuggestion: ImportSuggestion | null = null;
+
 const groupsContainer = document.getElementById("groupsContainer");
 const statusElement = document.getElementById("status");
+const dirtyStateElement = document.getElementById("dirtyState");
 const saveButton = document.getElementById("saveButton");
 const reloadButton = document.getElementById("reloadButton");
 const uploaderSuggestions = document.getElementById("uploaderSuggestions");
+const importFromLinkButton = document.getElementById("importFromLinkButton");
+const importModal = document.getElementById("importModal");
+const importModalBackdrop = document.getElementById("importModalBackdrop");
+const closeImportModalButton = document.getElementById("closeImportModalButton");
+const importUrlInput = document.getElementById("importUrlInput") as HTMLInputElement | null;
+const submitImportUrlButton = document.getElementById("submitImportUrlButton");
+const importStatusText = document.getElementById("importStatusText");
+const importMeta = document.getElementById("importMeta");
+const importWarnings = document.getElementById("importWarnings");
+const importReviewSection = document.getElementById("importReviewSection");
+const importGroupSelect = document.getElementById("importGroupSelect") as HTMLSelectElement | null;
+const importSectionSelect = document.getElementById("importSectionSelect") as HTMLSelectElement | null;
+const importFolderInput = document.getElementById("importFolderInput") as HTMLInputElement | null;
+const importUploaderInput = document.getElementById("importUploaderInput") as HTMLInputElement | null;
+const importQueryInput = document.getElementById("importQueryInput") as HTMLInputElement | null;
+const importPatternInput = document.getElementById("importPatternInput") as HTMLInputElement | null;
+const confirmImportButton = document.getElementById("confirmImportButton");
 const runDownloaderButton = document.getElementById("runDownloaderButton");
+const saveBeforeRunModal = document.getElementById("saveBeforeRunModal");
+const saveBeforeRunBackdrop = document.getElementById("saveBeforeRunBackdrop");
+const closeSaveBeforeRunModalButton = document.getElementById("closeSaveBeforeRunModalButton");
+const saveBeforeRunConfirmButton = document.getElementById("saveBeforeRunConfirmButton");
+const cancelSaveBeforeRunButton = document.getElementById("cancelSaveBeforeRunButton");
 const runModal = document.getElementById("runModal");
 const runModalBackdrop = document.getElementById("runModalBackdrop");
 const closeRunModalButton = document.getElementById("closeRunModalButton");
@@ -59,10 +116,33 @@ const logOutput = document.getElementById("logOutput");
 if (
   !groupsContainer ||
   !statusElement ||
+  !dirtyStateElement ||
   !saveButton ||
   !reloadButton ||
   !uploaderSuggestions ||
+  !importFromLinkButton ||
+  !importModal ||
+  !importModalBackdrop ||
+  !closeImportModalButton ||
+  !importUrlInput ||
+  !submitImportUrlButton ||
+  !importStatusText ||
+  !importMeta ||
+  !importWarnings ||
+  !importReviewSection ||
+  !importGroupSelect ||
+  !importSectionSelect ||
+  !importFolderInput ||
+  !importUploaderInput ||
+  !importQueryInput ||
+  !importPatternInput ||
+  !confirmImportButton ||
   !runDownloaderButton ||
+  !saveBeforeRunModal ||
+  !saveBeforeRunBackdrop ||
+  !closeSaveBeforeRunModalButton ||
+  !saveBeforeRunConfirmButton ||
+  !cancelSaveBeforeRunButton ||
   !runModal ||
   !runModalBackdrop ||
   !closeRunModalButton ||
@@ -78,13 +158,48 @@ const setStatus = (message: string, isError = false): void => {
   statusElement.style.color = isError ? "#9f1c1c" : "#1f5c2f";
 };
 
-const createTextInput = (value: string | undefined, onChange: (value: string) => void): HTMLInputElement => {
+const setImportStatus = (message: string, isError = false): void => {
+  importStatusText.textContent = message;
+  importStatusText.style.color = isError ? "#9f1c1c" : "#1f5c2f";
+};
+
+const serializeDownloadList = (downloadList: DownloadList): string =>
+  JSON.stringify(downloadList);
+
+const renderDirtyState = (): void => {
+  dirtyStateElement.textContent = state.hasUnsavedChanges
+    ? "Unsaved changes"
+    : "All changes saved";
+  dirtyStateElement.className = state.hasUnsavedChanges
+    ? "dirty-state dirty"
+    : "dirty-state clean";
+  saveButton.textContent = state.hasUnsavedChanges
+    ? "Save Changes (Sort by folder)"
+    : "Save (Sort by folder)";
+};
+
+const syncDirtyState = (): void => {
+  state.hasUnsavedChanges = serializeDownloadList(state.downloadList) !== state.persistedSnapshot;
+  renderDirtyState();
+};
+
+const markCurrentListClean = (): void => {
+  state.persistedSnapshot = serializeDownloadList(state.downloadList);
+  state.hasUnsavedChanges = false;
+  renderDirtyState();
+};
+
+const createTextInput = (
+  value: string | undefined,
+  onChange: (value: string) => void,
+): HTMLInputElement => {
   const input = document.createElement("input");
   input.type = "text";
   input.value = value ?? "";
   input.addEventListener("input", (event) => {
     const target = event.target as HTMLInputElement;
     onChange(target.value);
+    syncDirtyState();
   });
   return input;
 };
@@ -98,13 +213,17 @@ const createUploaderInput = (
   return input;
 };
 
-const createCheckbox = (value: boolean | undefined, onChange: (value: boolean) => void): HTMLInputElement => {
+const createCheckbox = (
+  value: boolean | undefined,
+  onChange: (value: boolean) => void,
+): HTMLInputElement => {
   const input = document.createElement("input");
   input.type = "checkbox";
   input.checked = Boolean(value);
   input.addEventListener("change", (event) => {
     const target = event.target as HTMLInputElement;
     onChange(target.checked);
+    syncDirtyState();
   });
   return input;
 };
@@ -115,6 +234,30 @@ const defaultEntry = (): DownloadEntry => ({
   query: "",
   complete: false,
 });
+
+const defaultSeasonPackEntry = (): DownloadEntry => ({
+  ...defaultEntry(),
+  seasonPack: true,
+});
+
+const isEcchiGroup = (groupName: string): boolean => groupName.toLowerCase() === "ecchi";
+
+const isSeasonPackEntry = (entry: DownloadEntry): boolean => entry.seasonPack === true;
+
+const getEntriesForSection = (groupName: string, section: GroupSection): DownloadEntry[] => {
+  const entries = state.downloadList[groupName] ?? [];
+  return entries.filter((entry) =>
+    section === "seasonPacks" ? isSeasonPackEntry(entry) : !isSeasonPackEntry(entry),
+  );
+};
+
+const deleteEntry = (groupName: string, targetEntry: DownloadEntry): void => {
+  const groupEntries = state.downloadList[groupName];
+  const index = groupEntries.indexOf(targetEntry);
+  if (index >= 0) {
+    groupEntries.splice(index, 1);
+  }
+};
 
 const syncUploaderSuggestions = (): void => {
   const uploaders = new Set<string>();
@@ -157,9 +300,8 @@ const formatStatusLine = (): string => {
 
 const renderDownloaderState = (): void => {
   runStatusText.textContent = formatStatusLine();
-  runDownloaderButton.toggleAttribute("disabled", downloaderState.status === "running");
   runDownloaderButton.textContent =
-    downloaderState.status === "running" ? "Downloader Running..." : "Run Downloader";
+    downloaderState.status === "running" ? "View Downloader" : "Run Downloader";
 
   progressList.innerHTML = "";
   const sortedProgress = [...downloaderState.progress].sort((a, b) =>
@@ -174,6 +316,7 @@ const renderDownloaderState = (): void => {
     meta.className = "progress-meta";
 
     const name = document.createElement("span");
+    name.className = "progress-name";
     name.textContent = item.name;
     const percent = document.createElement("span");
     percent.textContent = `${item.percent}%`;
@@ -198,6 +341,162 @@ const openRunModal = (): void => {
 
 const closeRunModal = (): void => {
   runModal.setAttribute("hidden", "true");
+};
+
+const openSaveBeforeRunModal = (): void => {
+  saveBeforeRunModal.removeAttribute("hidden");
+};
+
+const closeSaveBeforeRunModal = (): void => {
+  saveBeforeRunModal.setAttribute("hidden", "true");
+  saveBeforeRunConfirmButton.removeAttribute("disabled");
+};
+
+const createAddEntryButton = (groupName: string, section: GroupSection): HTMLButtonElement => {
+  const addEntryButton = document.createElement("button");
+  addEntryButton.type = "button";
+  addEntryButton.textContent = section === "seasonPacks" ? "Add Season Pack" : "Add Entry";
+  addEntryButton.addEventListener("click", () => {
+    const entry = section === "seasonPacks" ? defaultSeasonPackEntry() : defaultEntry();
+    state.downloadList[groupName].push(entry);
+    syncDirtyState();
+    renderGroups();
+  });
+  return addEntryButton;
+};
+
+const renderSectionTable = (
+  groupName: string,
+  section: GroupSection,
+  titleText: string,
+): HTMLDivElement => {
+  const sectionWrapper = document.createElement("div");
+  sectionWrapper.className = "group-section";
+
+  const sectionHeader = document.createElement("div");
+  sectionHeader.className = "group-header";
+
+  const sectionTitle = document.createElement("h3");
+  sectionTitle.textContent = titleText;
+  sectionTitle.style.margin = "0";
+  sectionTitle.style.fontSize = "1rem";
+
+  sectionHeader.appendChild(sectionTitle);
+  sectionWrapper.appendChild(sectionHeader);
+
+  const showSukebei = isEcchiGroup(groupName);
+  const table = document.createElement("table");
+  const headRow = document.createElement("tr");
+  const columns = ["folder", "uploader", "query", "complete"];
+
+  if (showSukebei) {
+    columns.push("sukebei");
+  }
+
+  columns.push("pattern", "actions");
+
+  for (const name of columns) {
+    const th = document.createElement("th");
+    th.textContent = name;
+    headRow.appendChild(th);
+  }
+
+  const thead = document.createElement("thead");
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  const sectionEntries = getEntriesForSection(groupName, section);
+
+  for (const entry of sectionEntries) {
+    const tr = document.createElement("tr");
+
+    const folderCell = document.createElement("td");
+    folderCell.appendChild(
+      createTextInput(entry.folder, (value) => {
+        entry.folder = value;
+      }),
+    );
+    tr.appendChild(folderCell);
+
+    const uploaderCell = document.createElement("td");
+    uploaderCell.appendChild(
+      createUploaderInput(entry.uploader, (value) => {
+        entry.uploader = value;
+        syncUploaderSuggestions();
+      }),
+    );
+    tr.appendChild(uploaderCell);
+
+    const queryCell = document.createElement("td");
+    queryCell.appendChild(
+      createTextInput(entry.query, (value) => {
+        entry.query = value;
+      }),
+    );
+    tr.appendChild(queryCell);
+
+    const completeCell = document.createElement("td");
+    completeCell.style.textAlign = "center";
+    completeCell.appendChild(
+      createCheckbox(entry.complete, (value) => {
+        entry.complete = value;
+      }),
+    );
+    tr.appendChild(completeCell);
+
+    if (showSukebei) {
+      const sukebeiCell = document.createElement("td");
+      sukebeiCell.style.textAlign = "center";
+      sukebeiCell.appendChild(
+        createCheckbox(entry.sukebei, (value) => {
+          if (value) {
+            entry.sukebei = true;
+            return;
+          }
+          delete entry.sukebei;
+        }),
+      );
+      tr.appendChild(sukebeiCell);
+    }
+
+    const patternCell = document.createElement("td");
+    patternCell.appendChild(
+      createTextInput(entry.pattern, (value) => {
+        if (value.trim() === "") {
+          delete entry.pattern;
+          return;
+        }
+        entry.pattern = value;
+      }),
+    );
+    tr.appendChild(patternCell);
+
+    const actionsCell = document.createElement("td");
+    actionsCell.className = "row-actions";
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.textContent = "Delete";
+    deleteButton.addEventListener("click", () => {
+      deleteEntry(groupName, entry);
+      syncDirtyState();
+      renderGroups();
+    });
+    actionsCell.appendChild(deleteButton);
+    tr.appendChild(actionsCell);
+    tbody.appendChild(tr);
+  }
+
+  table.appendChild(tbody);
+  sectionWrapper.appendChild(table);
+
+  const sectionFooter = document.createElement("div");
+  sectionFooter.className = "group-header";
+  sectionFooter.style.justifyContent = "flex-end";
+  sectionFooter.appendChild(createAddEntryButton(groupName, section));
+  sectionWrapper.appendChild(sectionFooter);
+
+  return sectionWrapper;
 };
 
 const renderGroups = (): void => {
@@ -225,124 +524,96 @@ const renderGroups = (): void => {
     title.style.margin = "0";
     title.style.fontSize = "1.1rem";
 
-    const addEntryButton = document.createElement("button");
-    addEntryButton.type = "button";
-    addEntryButton.textContent = "Add Entry";
-    addEntryButton.addEventListener("click", () => {
-      state.downloadList[groupName].push(defaultEntry());
-      renderGroups();
-    });
-
-    header.append(title, addEntryButton);
+    header.appendChild(title);
     groupWrapper.appendChild(header);
 
-    const table = document.createElement("table");
-    const headRow = document.createElement("tr");
-    ["folder", "uploader", "query", "complete", "sukebei", "pattern", "seasonPack", "actions"].forEach(
-      (name) => {
-        const th = document.createElement("th");
-        th.textContent = name;
-        headRow.appendChild(th);
-      },
+    groupWrapper.appendChild(renderSectionTable(groupName, "regular", `${groupName} Entries`));
+    groupWrapper.appendChild(
+      renderSectionTable(groupName, "seasonPacks", `${groupName} Season Packs`),
     );
-    const thead = document.createElement("thead");
-    thead.appendChild(headRow);
-    table.appendChild(thead);
-
-    const tbody = document.createElement("tbody");
-    state.downloadList[groupName].forEach((entry, index) => {
-      const tr = document.createElement("tr");
-
-      const folderCell = document.createElement("td");
-      folderCell.appendChild(
-        createTextInput(entry.folder, (value) => {
-          entry.folder = value;
-        }),
-      );
-      tr.appendChild(folderCell);
-
-      const uploaderCell = document.createElement("td");
-      uploaderCell.appendChild(
-        createUploaderInput(entry.uploader, (value) => {
-          entry.uploader = value;
-          syncUploaderSuggestions();
-        }),
-      );
-      tr.appendChild(uploaderCell);
-
-      const queryCell = document.createElement("td");
-      queryCell.appendChild(
-        createTextInput(entry.query, (value) => {
-          entry.query = value;
-        }),
-      );
-      tr.appendChild(queryCell);
-
-      const completeCell = document.createElement("td");
-      completeCell.style.textAlign = "center";
-      completeCell.appendChild(
-        createCheckbox(entry.complete, (value) => {
-          entry.complete = value;
-        }),
-      );
-      tr.appendChild(completeCell);
-
-      const sukebeiCell = document.createElement("td");
-      sukebeiCell.style.textAlign = "center";
-      sukebeiCell.appendChild(
-        createCheckbox(entry.sukebei, (value) => {
-          if (value) {
-            entry.sukebei = true;
-            return;
-          }
-          delete entry.sukebei;
-        }),
-      );
-      tr.appendChild(sukebeiCell);
-
-      const patternCell = document.createElement("td");
-      patternCell.appendChild(
-        createTextInput(entry.pattern, (value) => {
-          if (value.trim() === "") {
-            delete entry.pattern;
-            return;
-          }
-          entry.pattern = value;
-        }),
-      );
-      tr.appendChild(patternCell);
-
-      const seasonPackCell = document.createElement("td");
-      seasonPackCell.style.textAlign = "center";
-      seasonPackCell.appendChild(
-        createCheckbox(entry.seasonPack, (value) => {
-          if (value) {
-            entry.seasonPack = true;
-            return;
-          }
-          delete entry.seasonPack;
-        }),
-      );
-      tr.appendChild(seasonPackCell);
-
-      const actionsCell = document.createElement("td");
-      actionsCell.className = "row-actions";
-      const deleteButton = document.createElement("button");
-      deleteButton.type = "button";
-      deleteButton.textContent = "Delete";
-      deleteButton.addEventListener("click", () => {
-        state.downloadList[groupName].splice(index, 1);
-        renderGroups();
-      });
-      actionsCell.appendChild(deleteButton);
-      tr.appendChild(actionsCell);
-      tbody.appendChild(tr);
-    });
-
-    table.appendChild(tbody);
-    groupWrapper.appendChild(table);
     groupsContainer.appendChild(groupWrapper);
   }
+};
+
+const renderImportWarnings = (warnings: string[]): void => {
+  importWarnings.innerHTML = "";
+  if (!warnings.length) {
+    importWarnings.setAttribute("hidden", "true");
+    return;
+  }
+
+  for (const warning of warnings) {
+    const item = document.createElement("li");
+    item.textContent = warning;
+    importWarnings.appendChild(item);
+  }
+  importWarnings.removeAttribute("hidden");
+};
+
+const populateImportGroupOptions = (selectedGroup: string): void => {
+  const groupNames = Object.keys(state.downloadList);
+  importGroupSelect.innerHTML = "";
+  for (const groupName of groupNames) {
+    const option = document.createElement("option");
+    option.value = groupName;
+    option.textContent = groupName;
+    importGroupSelect.appendChild(option);
+  }
+
+  if (groupNames.includes(selectedGroup)) {
+    importGroupSelect.value = selectedGroup;
+  } else if (groupNames.length > 0) {
+    importGroupSelect.value = groupNames[0];
+  }
+};
+
+const resetImportModal = (clearUrl = false): void => {
+  currentImportSuggestion = null;
+  submitImportUrlButton.removeAttribute("disabled");
+  confirmImportButton.removeAttribute("disabled");
+  importReviewSection.setAttribute("hidden", "true");
+  importMeta.setAttribute("hidden", "true");
+  importMeta.textContent = "";
+  renderImportWarnings([]);
+  setImportStatus("");
+
+  if (clearUrl) {
+    importUrlInput.value = "";
+  }
+
+  importFolderInput.value = "";
+  importUploaderInput.value = "";
+  importQueryInput.value = "";
+  importPatternInput.value = "";
+};
+
+const openImportModal = (): void => {
+  resetImportModal();
+  importModal.removeAttribute("hidden");
+  importUrlInput.focus();
+};
+
+const closeImportModal = (): void => {
+  importModal.setAttribute("hidden", "true");
+};
+
+const renderImportSuggestion = (): void => {
+  if (!currentImportSuggestion) {
+    importReviewSection.setAttribute("hidden", "true");
+    return;
+  }
+
+  populateImportGroupOptions(currentImportSuggestion.suggestedGroup);
+  importSectionSelect.value = currentImportSuggestion.suggestedSection;
+  importFolderInput.value = currentImportSuggestion.fields.folder;
+  importUploaderInput.value = currentImportSuggestion.fields.uploader;
+  importQueryInput.value = currentImportSuggestion.fields.query;
+  importPatternInput.value = currentImportSuggestion.fields.pattern ?? "";
+
+  importMeta.textContent = `Source: ${currentImportSuggestion.sourceSite} | Raw title: ${currentImportSuggestion.rawTitle ?? "Unknown"}`;
+  importMeta.removeAttribute("hidden");
+  renderImportWarnings(currentImportSuggestion.warnings);
+  importReviewSection.removeAttribute("hidden");
 };
 
 const loadDownloadList = async (): Promise<void> => {
@@ -354,6 +625,7 @@ const loadDownloadList = async (): Promise<void> => {
   }
   state.downloadList = (await response.json()) as DownloadList;
   renderGroups();
+  markCurrentListClean();
   setStatus("Loaded download list.");
 };
 
@@ -373,7 +645,84 @@ const saveDownloadList = async (): Promise<void> => {
 
   state.downloadList = responseBody;
   renderGroups();
+  markCurrentListClean();
   setStatus("Saved. Entries sorted by folder in each group.");
+};
+
+const importFromLink = async (): Promise<void> => {
+  const url = importUrlInput.value.trim();
+  if (!url) {
+    setImportStatus("Paste a Nyaa or Sukebei torrent page link first.", true);
+    return;
+  }
+
+  submitImportUrlButton.setAttribute("disabled", "true");
+  confirmImportButton.setAttribute("disabled", "true");
+  importReviewSection.setAttribute("hidden", "true");
+  importMeta.setAttribute("hidden", "true");
+  renderImportWarnings([]);
+  setImportStatus("Analyzing link...");
+
+  try {
+    const response = await fetch("/api/import-from-link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+
+    const body = (await response.json()) as ImportSuggestion & { error?: string };
+    if (!response.ok) {
+      throw new Error(body.error || "Import failed.");
+    }
+
+    currentImportSuggestion = body;
+    renderImportSuggestion();
+    setImportStatus("Review the suggestion, then add it to the editor.");
+  } catch (error) {
+    setImportStatus(error instanceof Error ? error.message : "Import failed.", true);
+  } finally {
+    submitImportUrlButton.removeAttribute("disabled");
+    confirmImportButton.removeAttribute("disabled");
+  }
+};
+
+const confirmImportedEntry = (): void => {
+  if (!currentImportSuggestion) {
+    setImportStatus("Import a link first.", true);
+    return;
+  }
+
+  const targetGroup = importGroupSelect.value;
+  const targetSection = importSectionSelect.value as GroupSection;
+  const targetEntries = state.downloadList[targetGroup];
+
+  if (!targetEntries) {
+    setImportStatus(`Group '${targetGroup}' does not exist in the current download list.`, true);
+    return;
+  }
+
+  const nextEntry: DownloadEntry = {
+    folder: importFolderInput.value.trim(),
+    uploader: importUploaderInput.value.trim(),
+    query: importQueryInput.value.trim(),
+    complete: false,
+    ...(importPatternInput.value.trim() ? { pattern: importPatternInput.value.trim() } : {}),
+    ...(currentImportSuggestion.sourceSite === "sukebei" ? { sukebei: true } : {}),
+    ...(targetSection === "seasonPacks" ? { seasonPack: true } : {}),
+  };
+
+  if (!nextEntry.folder || !nextEntry.uploader || !nextEntry.query) {
+    setImportStatus("Folder, uploader, and query are required before adding the imported entry.", true);
+    return;
+  }
+
+  targetEntries.push(nextEntry);
+  syncDirtyState();
+  renderGroups();
+  closeImportModal();
+  setStatus(
+    `Imported '${nextEntry.folder}' into ${targetGroup} ${targetSection === "seasonPacks" ? "Season Packs" : "Entries"}.`,
+  );
 };
 
 const loadDownloaderStatus = async (): Promise<void> => {
@@ -400,6 +749,11 @@ const startDownloader = async (): Promise<void> => {
     const errorBody = (await response.json()) as { error?: string };
     throw new Error(errorBody.error || "Failed to start downloader.");
   }
+};
+
+const beginDownloaderRun = async (): Promise<void> => {
+  openRunModal();
+  await startDownloader();
 };
 
 const setupDownloaderStream = (): void => {
@@ -455,6 +809,15 @@ const setupDownloaderStream = (): void => {
   };
 };
 
+window.addEventListener("beforeunload", (event) => {
+  if (!state.hasUnsavedChanges) {
+    return;
+  }
+
+  event.preventDefault();
+  event.returnValue = "";
+});
+
 saveButton.addEventListener("click", async () => {
   try {
     await saveDownloadList();
@@ -471,15 +834,70 @@ reloadButton.addEventListener("click", async () => {
   }
 });
 
+importFromLinkButton.addEventListener("click", () => {
+  openImportModal();
+});
+
+submitImportUrlButton.addEventListener("click", async () => {
+  await importFromLink();
+});
+
+confirmImportButton.addEventListener("click", () => {
+  confirmImportedEntry();
+});
+
+closeImportModalButton.addEventListener("click", () => {
+  closeImportModal();
+});
+
+importModalBackdrop.addEventListener("click", () => {
+  closeImportModal();
+});
+
 runDownloaderButton.addEventListener("click", async () => {
-  openRunModal();
+  if (downloaderState.status === "running") {
+    openRunModal();
+    return;
+  }
+
+  if (state.hasUnsavedChanges) {
+    openSaveBeforeRunModal();
+    return;
+  }
+
   try {
-    if (downloaderState.status !== "running") {
-      await startDownloader();
-    }
+    await beginDownloaderRun();
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "Unable to start downloader.", true);
   }
+});
+
+saveBeforeRunConfirmButton.addEventListener("click", async () => {
+  saveBeforeRunConfirmButton.setAttribute("disabled", "true");
+  try {
+    await saveDownloadList();
+    closeSaveBeforeRunModal();
+    await beginDownloaderRun();
+  } catch (error) {
+    setStatus(
+      error instanceof Error ? error.message : "Unable to save changes before starting downloader.",
+      true,
+    );
+  } finally {
+    saveBeforeRunConfirmButton.removeAttribute("disabled");
+  }
+});
+
+cancelSaveBeforeRunButton.addEventListener("click", () => {
+  closeSaveBeforeRunModal();
+});
+
+closeSaveBeforeRunModalButton.addEventListener("click", () => {
+  closeSaveBeforeRunModal();
+});
+
+saveBeforeRunBackdrop.addEventListener("click", () => {
+  closeSaveBeforeRunModal();
 });
 
 closeRunModalButton.addEventListener("click", () => {
@@ -489,6 +907,9 @@ closeRunModalButton.addEventListener("click", () => {
 runModalBackdrop.addEventListener("click", () => {
   closeRunModal();
 });
+
+renderDirtyState();
+renderDownloaderState();
 
 void loadDownloadList().catch((error) => {
   setStatus(error instanceof Error ? error.message : "Failed to load download list.", true);

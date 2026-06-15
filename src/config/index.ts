@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-import { AppConfig, SmtpConfig } from "../types";
+import { AppConfig, GemmaConfig, SmtpConfig } from "../types";
 
 dotenv.config({ quiet: true }); // Load environment variables from .env file
 
@@ -34,6 +34,14 @@ const getFromEmail = (): string => {
   return `"Nyaa Downloader" <${from}>`;
 };
 
+const getGemmaConfig = (): GemmaConfig => {
+  return {
+    apiUrl: process.env.GEMMA_API_URL || "http://127.0.0.1:11434/api/generate",
+    model: process.env.GEMMA_MODEL || "gemma4:e4b",
+    timeoutMs: parseInt(process.env.GEMMA_TIMEOUT_MS || "120000", 10),
+  };
+};
+
 export const getAppConfig = (): AppConfig => {
   return {
     nyaaUrl: getNyaaUrl(),
@@ -42,5 +50,6 @@ export const getAppConfig = (): AppConfig => {
     smtp: getSmtpConfig(),
     reportEmail: getReportEmail(),
     fromEmail: getFromEmail(),
+    gemma: getGemmaConfig(),
   };
 };

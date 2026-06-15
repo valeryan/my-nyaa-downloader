@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { DownloadList, ImportSuggestion } from "../types";
 import { createEditorApp } from "./server";
-import type { DownloadList } from "../types";
 
 type TestServer = {
   baseUrl: string;
@@ -12,17 +12,21 @@ type TestServer = {
 
 const createTestServer = async (
   dataFilePath: string,
-  downloaderCommand?: {
-    command: string;
-    args: string[];
-    cwd?: string;
-    env?: NodeJS.ProcessEnv;
-  },
+  options: {
+    downloaderCommand?: {
+      command: string;
+      args: string[];
+      cwd?: string;
+      env?: NodeJS.ProcessEnv;
+    };
+    importSuggestionService?: (url: string, allowedGroups: string[]) => Promise<ImportSuggestion>;
+  } = {},
 ): Promise<TestServer> => {
   const app = createEditorApp({
     dataFilePath,
     staticDir: path.resolve("src/editor/client"),
-    downloaderCommand,
+    downloaderCommand: options.downloaderCommand,
+    importSuggestionService: options.importSuggestionService,
   });
 
   const server = app.listen(0, "127.0.0.1");
@@ -122,6 +126,122 @@ describe("editor server", () => {
     ]);
   });
 
+  it("preserves mixed regular, season pack, and sukebei entries on save", async () => {
+    server = await createTestServer(dataFilePath);
+    const payload: DownloadList = {
+      Anime: [
+        { folder: "Series B", uploader: "u", query: "q", complete: false },
+        {
+          folder: "Series A",
+          uploader: "pack-uploader",
+          query: "pack query",
+          complete: false,
+          seasonPack: true,
+        },
+      ],
+      Ecchi: [
+        {
+          folder: "Ecchi Show",
+          uploader: "anon",
+          query: "ecchi query",
+          complete: false,
+          sukebei: true,
+        },
+      ],
+    };
+
+    const response = await fetch(`${server.baseUrl}/api/download-list`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    expect(response.status).toBe(200);
+    const saved = (await response.json()) as DownloadList;
+    expect(saved.Anime).toEqual([
+      {
+        folder: "Series A",
+        uploader: "pack-uploader",
+        query: "pack query",
+        complete: false,
+        seasonPack: true,
+      },
+      { folder: "Series B", uploader: "u", query: "q", complete: false },
+    ]);
+    expect(saved.Ecchi).toEqual([
+      {
+        folder: "Ecchi Show",
+        uploader: "anon",
+        query: "ecchi query",
+        complete: false,
+        sukebei: true,
+      },
+    ]);
+  });
+
+  it("imports a link through the dedicated endpoint", async () => {
+    const importSuggestionService = vi.fn().mockResolvedValue({
+      suggestedGroup: "Anime",
+      suggestedSection: "seasonPacks",
+      fields: {
+        folder: "Example Show",
+        uploader: "SubsPlease",
+        query: "[SubsPlease] Example Show",
+      },
+      sourceSite: "nyaa",
+      warnings: ["Model guessed season pack from title."],
+      rawTitle: "[SubsPlease] Example Show Season 1 Batch [1080p]",
+      reasons: {
+        placement: "The release is on Nyaa and looks like standard anime.",
+        section: "The file list contains multiple files.",
+        folder: "The English title appears near the start.",
+        query: "A short clean show title should search well on Nyaa.",
+      },
+    } satisfies ImportSuggestion);
+
+    server = await createTestServer(dataFilePath, { importSuggestionService });
+
+    const response = await fetch(`${server.baseUrl}/api/import-from-link`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: "https://nyaa.si/view/1359919" }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as ImportSuggestion;
+    expect(body.suggestedGroup).toBe("Anime");
+    expect(body.suggestedSection).toBe("seasonPacks");
+    expect(importSuggestionService).toHaveBeenCalledWith("https://nyaa.si/view/1359919", ["Anime", "Ecchi"]);
+  });
+
+  it("rejects invalid import payloads", async () => {
+    server = await createTestServer(dataFilePath);
+
+    const response = await fetch(`${server.baseUrl}/api/import-from-link`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: "not-a-url" }),
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  it("surfaces import errors cleanly", async () => {
+    server = await createTestServer(dataFilePath, {
+      importSuggestionService: vi.fn().mockRejectedValue(new Error("Gemma is unavailable.")),
+    });
+
+    const response = await fetch(`${server.baseUrl}/api/import-from-link`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: "https://nyaa.si/view/1359919" }),
+    });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toBe("Gemma is unavailable.");
+  });
+
   it("rejects invalid payloads", async () => {
     server = await createTestServer(dataFilePath);
     const response = await fetch(`${server.baseUrl}/api/download-list`, {
@@ -208,11 +328,13 @@ describe("editor server", () => {
 
   it("starts downloader run and reports final status", async () => {
     server = await createTestServer(dataFilePath, {
-      command: "node",
-      args: [
-        "-e",
-        "console.log('Checking /tmp/Anime for new episodes...'); console.log('[#####] Demo Series | 100%'); process.exit(0);",
-      ],
+      downloaderCommand: {
+        command: "node",
+        args: [
+          "-e",
+          "console.log('Checking /tmp/Anime for new episodes...'); console.log('[#####] Demo Series | 100%'); process.exit(0);",
+        ],
+      },
     });
 
     const runResponse = await fetch(`${server.baseUrl}/api/downloader/run`, {
@@ -237,8 +359,10 @@ describe("editor server", () => {
 
   it("rejects concurrent downloader runs", async () => {
     server = await createTestServer(dataFilePath, {
-      command: "node",
-      args: ["-e", "setTimeout(() => process.exit(0), 300);"],
+      downloaderCommand: {
+        command: "node",
+        args: ["-e", "setTimeout(() => process.exit(0), 300);"]
+      },
     });
 
     const first = await fetch(`${server.baseUrl}/api/downloader/run`, {

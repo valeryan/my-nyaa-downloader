@@ -1,10 +1,12 @@
 import express, { type Request, type Response } from "express";
+import type { Server } from "node:http";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import type { DownloadEntry, DownloadList } from "../types";
+import type { DownloadEntry, DownloadList, ImportFromLinkService } from "../types";
+import { createImportFromLinkService } from "./import";
 
 const downloadEntrySchema = z.object({
   folder: z.string().min(1),
@@ -17,6 +19,10 @@ const downloadEntrySchema = z.object({
 });
 
 const downloadListSchema = z.record(z.string().min(1), z.array(downloadEntrySchema));
+
+const importUrlSchema = z.object({
+  url: z.string().url(),
+});
 
 const folderSorter = (a: DownloadEntry, b: DownloadEntry): number =>
   a.folder.localeCompare(b.folder, undefined, {
@@ -71,6 +77,7 @@ export type EditorServerOptions = {
     cwd?: string;
     env?: NodeJS.ProcessEnv;
   };
+  importSuggestionService?: ImportFromLinkService;
 };
 
 type DownloaderStatus = "idle" | "running" | "success" | "failed";
@@ -105,8 +112,13 @@ export const createEditorApp = (options: EditorServerOptions = {}): express.Expr
     command: "npm",
     args: ["run", "downloader"],
     cwd: projectRoot,
-    env: process.env,
+    env: {
+      ...process.env,
+      NYAA_SKIP_EMAIL_REPORT: "true",
+    },
   };
+
+  const importSuggestionService = options.importSuggestionService ?? createImportFromLinkService();
 
   const downloaderState: DownloaderState = {
     status: "idle",
@@ -367,6 +379,27 @@ export const createEditorApp = (options: EditorServerOptions = {}): express.Expr
     },
   );
 
+  app.post("/api/import-from-link", async (req: Request, res: Response) => {
+    const result = importUrlSchema.safeParse(req.body);
+    if (!result.success) {
+      res.status(400).json({
+        error: "Invalid import request payload.",
+        issues: result.error.issues,
+      });
+      return;
+    }
+
+    try {
+      const currentDownloadList = readDownloadList(dataFilePath);
+      const suggestion = await importSuggestionService(result.data.url, Object.keys(currentDownloadList));
+      res.json(suggestion);
+    } catch (error) {
+      res.status(400).json({
+        error: error instanceof Error ? error.message : "Failed to import link.",
+      });
+    }
+  });
+
   app.get("/api/downloader/status", (_req: Request, res: Response) => {
     res.json({
       ...downloaderState,
@@ -411,6 +444,10 @@ export const createEditorApp = (options: EditorServerOptions = {}): express.Expr
     res.status(202).json({ status: "running" });
   });
 
+  app.get("/api/health", (_req: Request, res: Response) => {
+    res.json({ status: "ok" });
+  });
+
   app.use(express.static(staticDir));
   app.get("/", (_req: Request, res: Response) => {
     res.sendFile(path.join(staticDir, "index.html"));
@@ -419,14 +456,38 @@ export const createEditorApp = (options: EditorServerOptions = {}): express.Expr
   return app;
 };
 
-export const startEditorServer = (): void => {
-  const host = "127.0.0.1";
+export const startEditorServer = (): Server => {
+  const host = "0.0.0.0";
   const port = 4310;
   const app = createEditorApp();
 
-  app.listen(port, host, () => {
+  const server = app.listen(port, host, () => {
     console.log(`Editor running at http://${host}:${port}`);
   });
+
+  let shuttingDown = false;
+  const shutdown = (signal: NodeJS.Signals): void => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+    console.log(`Received ${signal}. Shutting down editor server...`);
+    server.close(() => {
+      process.exit(0);
+    });
+    setTimeout(() => {
+      process.exit(0);
+    }, 5000).unref();
+  };
+
+  process.once("SIGINT", () => {
+    shutdown("SIGINT");
+  });
+  process.once("SIGTERM", () => {
+    shutdown("SIGTERM");
+  });
+
+  return server;
 };
 
 const entryFilePath = fileURLToPath(import.meta.url);

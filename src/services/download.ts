@@ -10,7 +10,7 @@ import {
   filterExistingEpisodes,
   resolveAllEpisodes,
   resolveAnimePattern,
-  setEpisodePath
+  setEpisodePath,
 } from "../utils/episode";
 import { getFileList } from "../utils/file";
 import { logger } from "../utils/logger";
@@ -25,37 +25,40 @@ export const handleDownloadingNewEpisodes = async (
 ): Promise<TrackerData[]> => {
   logger.header(`Checking ${rootFolderPath} for new episodes...`);
 
-  // Iterate through each metadata entry
+  // Iterate through each metadata entry.
   for (const anime of downloads) {
-    // Skip completed entries
+    // Skip completed entries.
     if (anime.complete) {
       logger.debug(`${anime.folder} - already complete.`);
       continue;
     }
 
-    // Handle season packs separately
+    // Handle season packs separately.
     if (anime.seasonPack) {
-      await handleSeasonPackDownload(rootFolderPath, anime, downloadTracker);
+      const downloaded = await handleSeasonPackDownload(rootFolderPath, anime, downloadTracker);
+      if (downloaded) {
+        anime.complete = true;
+      }
       continue;
     }
 
-    // Create workers
+    // Create workers.
     let client: WebTorrent.Instance | null = null;
     let multiBar: cliProgress.MultiBar | null = null;
 
     try {
-      // Scrape Nyaa search results
+      // Scrape Nyaa search results.
       const available = await scrapeNyaaSearchResults(anime);
       const fileList = getFileList(rootFolderPath, anime);
 
-      // Resolve pattern once and pre-process all episodes
+      // Resolve pattern once and pre-process all episodes.
       const enhancedAnime = resolveAnimePattern(anime, available[0]?.title);
       const resolvedEpisodes = resolveAllEpisodes(enhancedAnime, available);
 
-      // Filter to only valid episodes (those that matched the pattern)
-      const validEpisodes = resolvedEpisodes.filter((ep) => ep.isValid);
+      // Filter to only valid episodes.
+      const validEpisodes = resolvedEpisodes.filter((episode) => episode.isValid);
 
-      // Apply special filters using resolved data
+      // Apply special filters using the resolved episode data.
       let specialFilters = validEpisodes.filter((episode) =>
         filterByResolution(validEpisodes, episode),
       );
@@ -72,15 +75,13 @@ export const handleDownloadingNewEpisodes = async (
         filterByLatestTimestamp(validEpisodes, episode),
       );
 
-      // Cleanup special episodes - pass resolved episodes for efficiency
+      // Cleanup special episodes before checking the remaining candidates.
       cleanupEpisodesHandler(rootFolderPath, fileList, enhancedAnime);
 
-      // Filter out existing episodes and update the path
+      // Filter out existing episodes and update the path.
       const filteredResults = specialFilters
         .filter((episode) => filterExistingEpisodes(fileList, episode))
-        .map((episode) =>
-          setEpisodePath(rootFolderPath, enhancedAnime, episode),
-        );
+        .map((episode) => setEpisodePath(rootFolderPath, enhancedAnime, episode));
 
       const newEpisodes = filteredResults.length;
       logger.info(`${anime.folder} - new episodes: ${newEpisodes}`);
@@ -98,10 +99,10 @@ export const handleDownloadingNewEpisodes = async (
 
         let successfulDownloads = 0;
 
-        // Split the filtered results into chunks of 6
+        // Split the filtered results into chunks of 6.
         const chunks = chunkArray(filteredResults, 6);
 
-        // Process each chunk sequentially
+        // Process each chunk sequentially.
         for (const chunk of chunks) {
           const downloadPromises = chunk.map(({ magnetLink, path }) => {
             if (magnetLink && path) {
@@ -127,13 +128,13 @@ export const handleDownloadingNewEpisodes = async (
           });
         }
 
-        // Tear down the progress bar and WebTorrent client
+        // Tear down the progress bar and WebTorrent client.
         multiBar.stop();
         multiBar = null;
         client.destroy();
         client = null;
 
-        // Add the series and new episode count to the download tracker
+        // Add the series and new episode count to the download tracker.
         downloadTracker.push({
           title: anime.folder,
           newEpisodes: successfulDownloads,

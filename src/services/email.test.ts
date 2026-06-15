@@ -4,11 +4,11 @@ import { getAppConfig } from "../config";
 import type { TrackerGroup } from "../types";
 import { sendEmailReport } from "./email";
 
-// Mock dependencies
 vi.mock("../config", () => ({
   getAppConfig: vi.fn(),
 }));
 
+// Mock dependencies
 vi.mock("nodemailer", () => ({
   default: {
     createTransport: vi.fn(),
@@ -18,16 +18,22 @@ vi.mock("nodemailer", () => ({
 describe("email service", () => {
   const mockConfig = {
     nyaaUrl: "https://nyaa.si",
+    sukebeiUrl: "https://sukebei.nyaa.si",
     downloadFolder: "/downloads",
     smtp: {
       host: "smtp.test.com",
       port: 587,
       secure: false,
       user: "test@test.com",
-      password: "password"
+      password: "password",
     },
     reportEmail: "report@test.com",
-    fromEmail: "from@test.com"
+    fromEmail: "from@test.com",
+    gemma: {
+      apiUrl: "http://127.0.0.1:11434/api/generate",
+      model: "gemma4:e4b",
+      timeoutMs: 1000,
+    },
   };
 
   beforeEach(() => {
@@ -42,11 +48,10 @@ describe("email service", () => {
         sendMail: mockSendMail,
       };
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(nodemailer.createTransport).mockReturnValue(mockTransporter as any);
+      vi.mocked(nodemailer.createTransport).mockReturnValue(mockTransporter as never);
 
       const mockTrackerGroups: TrackerGroup = {
-        "TestGroup": [
+        TestGroup: [
           {
             title: "Test Anime S01",
             newEpisodes: 2,
@@ -89,20 +94,19 @@ describe("email service", () => {
         sendMail: mockSendMail,
       };
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(nodemailer.createTransport).mockReturnValue(mockTransporter as any);
+      vi.mocked(nodemailer.createTransport).mockReturnValue(mockTransporter as never);
 
       const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       const mockTrackerGroups: TrackerGroup = {
-        "TestGroup": [],
+        TestGroup: [],
       };
 
       await sendEmailReport(mockTrackerGroups);
 
       expect(consoleSpy).toHaveBeenCalledWith(
         "Error sending email report:",
-        expect.any(Error)
+        expect.any(Error),
       );
 
       consoleSpy.mockRestore();
@@ -114,11 +118,10 @@ describe("email service", () => {
         sendMail: mockSendMail,
       };
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(nodemailer.createTransport).mockReturnValue(mockTransporter as any);
+      vi.mocked(nodemailer.createTransport).mockReturnValue(mockTransporter as never);
 
       const mockTrackerGroups: TrackerGroup = {
-        "EmptyGroup": [],
+        EmptyGroup: [],
       };
 
       await sendEmailReport(mockTrackerGroups);
@@ -149,11 +152,10 @@ describe("email service", () => {
         sendMail: mockSendMail,
       };
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(nodemailer.createTransport).mockReturnValue(mockTransporter as any);
+      vi.mocked(nodemailer.createTransport).mockReturnValue(mockTransporter as never);
 
       const mockTrackerGroups: TrackerGroup = {
-        "TestGroup": [
+        TestGroup: [
           {
             title: "Test Anime",
             newEpisodes: 1,
@@ -187,17 +189,16 @@ describe("email service", () => {
         sendMail: mockSendMail,
       };
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      vi.mocked(nodemailer.createTransport).mockReturnValue(mockTransporter as any);
+      vi.mocked(nodemailer.createTransport).mockReturnValue(mockTransporter as never);
 
       const mockTrackerGroups: TrackerGroup = {
-        "Group1": [
+        Group1: [
           {
             title: "Anime 1",
             newEpisodes: 2,
           },
         ],
-        "Group2": [
+        Group2: [
           {
             title: "Anime 2",
             newEpisodes: 1,

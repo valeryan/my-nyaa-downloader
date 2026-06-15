@@ -30,7 +30,7 @@
         display: flex;
         flex-wrap: wrap;
         gap: 0.75rem;
-        margin-bottom: 1rem;
+        margin-bottom: 0.75rem;
       }
 
       button {
@@ -45,6 +45,46 @@
       button.primary {
         background: #2a4b8d;
         color: #ffffff;
+      }
+
+      button:disabled {
+        opacity: 0.65;
+        cursor: not-allowed;
+      }
+
+      .status-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+      }
+
+      .status {
+        min-height: 1.25rem;
+        font-weight: 600;
+      }
+
+      .dirty-state {
+        min-height: 1.25rem;
+        font-size: 0.9rem;
+        font-weight: 700;
+        padding: 0.2rem 0.6rem;
+        border-radius: 999px;
+        border: 1px solid transparent;
+      }
+
+      .dirty-state.clean {
+        color: #1f5c2f;
+        background: #e6f6ea;
+        border-color: #b8dfc0;
+      }
+
+      .dirty-state.dirty {
+        color: #8a4b00;
+        background: #fff1de;
+        border-color: #f3cd9a;
       }
 
       .group {
@@ -79,18 +119,14 @@
         background: #ecf0f9;
       }
 
-      input[type="text"] {
+      input[type="text"],
+      select {
         width: 100%;
         box-sizing: border-box;
         border: 1px solid #c4cde2;
         border-radius: 4px;
         padding: 0.35rem;
-      }
-
-      .status {
-        min-height: 1.25rem;
-        margin-bottom: 1rem;
-        font-weight: 600;
+        background: #ffffff;
       }
 
       .row-actions {
@@ -125,6 +161,10 @@
         padding: 0.85rem;
       }
 
+      .modal-content.compact {
+        width: min(520px, calc(100% - 2rem));
+      }
+
       .modal-header {
         display: flex;
         justify-content: space-between;
@@ -153,9 +193,16 @@
       .progress-meta {
         display: flex;
         justify-content: space-between;
+        align-items: flex-start;
         gap: 0.75rem;
         font-size: 0.85rem;
         margin-bottom: 0.35rem;
+      }
+
+      .progress-name {
+        min-width: 0;
+        flex: 1;
+        overflow-wrap: anywhere;
       }
 
       .progress-bar {
@@ -174,6 +221,58 @@
         font-size: 0.8rem;
         white-space: pre-wrap;
       }
+
+      .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 0.75rem;
+        margin-top: 0.75rem;
+      }
+
+      .field {
+        display: grid;
+        gap: 0.35rem;
+      }
+
+      .field-inline {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .field-full {
+        grid-column: 1 / -1;
+      }
+
+      .import-status {
+        min-height: 1.25rem;
+        margin-top: 0.75rem;
+        font-weight: 600;
+      }
+
+      .import-warnings {
+        margin-top: 0.75rem;
+        padding-left: 1.1rem;
+        color: #8a4b00;
+      }
+
+      .import-meta {
+        margin-top: 0.75rem;
+        font-size: 0.88rem;
+        color: #456;
+      }
+
+      .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.75rem;
+        margin-top: 1rem;
+      }
+
+      .modal-copy {
+        margin-top: 0.85rem;
+        line-height: 1.45;
+      }
     </style>
   </head>
   <body>
@@ -181,12 +280,103 @@
       <h1>Download List Editor</h1>
       <div class="toolbar">
         <button id="reloadButton" type="button">Reload</button>
+        <button id="importFromLinkButton" type="button">Import from Link</button>
         <button id="runDownloaderButton" type="button">Run Downloader</button>
         <button id="saveButton" type="button" class="primary">Save (Sort by folder)</button>
       </div>
-      <div id="status" class="status"></div>
+      <div class="status-row">
+        <div id="status" class="status"></div>
+        <div id="dirtyState" class="dirty-state clean">All changes saved</div>
+      </div>
       <section id="groupsContainer"></section>
       <datalist id="uploaderSuggestions"></datalist>
+
+      <section id="importModal" class="modal" hidden>
+        <div id="importModalBackdrop" class="modal-backdrop"></div>
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="importModalTitle">
+          <div class="modal-header">
+            <h2 id="importModalTitle" class="modal-title">Import from Nyaa Link</h2>
+            <button id="closeImportModalButton" type="button">Close</button>
+          </div>
+
+          <div class="field field-full">
+            <label for="importUrlInput">Torrent page link</label>
+            <input
+              id="importUrlInput"
+              type="text"
+              placeholder="https://nyaa.si/view/1359919"
+              autocomplete="off"
+            />
+          </div>
+
+          <div class="modal-actions">
+            <button id="submitImportUrlButton" type="button" class="primary">Analyze Link</button>
+          </div>
+
+          <div id="importStatusText" class="import-status"></div>
+          <div id="importMeta" class="import-meta" hidden></div>
+          <ul id="importWarnings" class="import-warnings" hidden></ul>
+
+          <section id="importReviewSection" hidden>
+            <div class="form-grid">
+              <div class="field">
+                <label for="importGroupSelect">Category</label>
+                <select id="importGroupSelect"></select>
+              </div>
+
+              <div class="field">
+                <label for="importSectionSelect">Section</label>
+                <select id="importSectionSelect">
+                  <option value="regular">Regular Entries</option>
+                  <option value="seasonPacks">Season Packs</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label for="importFolderInput">Folder</label>
+                <input id="importFolderInput" type="text" />
+              </div>
+
+              <div class="field">
+                <label for="importUploaderInput">Uploader</label>
+                <input id="importUploaderInput" type="text" list="uploaderSuggestions" />
+              </div>
+
+              <div class="field field-full">
+                <label for="importQueryInput">Query</label>
+                <input id="importQueryInput" type="text" />
+              </div>
+
+              <div class="field field-full">
+                <label for="importPatternInput">Pattern</label>
+                <input id="importPatternInput" type="text" placeholder="Optional custom regex" />
+              </div>
+            </div>
+
+            <div class="modal-actions">
+              <button id="confirmImportButton" type="button" class="primary">Add Imported Entry</button>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section id="saveBeforeRunModal" class="modal" hidden>
+        <div id="saveBeforeRunBackdrop" class="modal-backdrop"></div>
+        <div class="modal-content compact" role="dialog" aria-modal="true" aria-labelledby="saveBeforeRunModalTitle">
+          <div class="modal-header">
+            <h2 id="saveBeforeRunModalTitle" class="modal-title">Save Before Running</h2>
+            <button id="closeSaveBeforeRunModalButton" type="button">Close</button>
+          </div>
+          <p class="modal-copy">
+            The current editor list has unsaved changes. Save the updated <code>download_list.json</code>
+            before starting the downloader?
+          </p>
+          <div class="modal-actions">
+            <button id="cancelSaveBeforeRunButton" type="button">Cancel</button>
+            <button id="saveBeforeRunConfirmButton" type="button" class="primary">Save and Run</button>
+          </div>
+        </div>
+      </section>
 
       <section id="runModal" class="modal" hidden>
         <div id="runModalBackdrop" class="modal-backdrop"></div>

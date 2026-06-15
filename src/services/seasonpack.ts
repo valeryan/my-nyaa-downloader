@@ -2,7 +2,8 @@ import * as cliProgress from "cli-progress";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import WebTorrent from "webtorrent";
-import { DownloadEntry, TrackerData } from "../types";
+import type { DownloadEntry, TorrentFileInfo, TrackerData } from "../types";
+import { getTorrentFileList } from "./torrent-metadata";
 import { resolveAnimePattern } from "../utils/episode";
 import { logger } from "../utils/logger";
 import { patterns } from "../utils/patterns";
@@ -11,7 +12,7 @@ import { scrapeNyaaSearchResults } from "./nyaa";
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Interface for individual file within a season pack torrent
+ * Interface for individual file within a season pack torrent.
  */
 interface SeasonPackFile {
   name: string;
@@ -21,7 +22,7 @@ interface SeasonPackFile {
 }
 
 /**
- * Parse episode information from a filename within a season pack
+ * Parse episode information from a filename within a season pack.
  * @param filename The filename to parse
  * @param pattern The regex pattern to use, or null to try default patterns
  * @returns Parsed episode information
@@ -30,13 +31,13 @@ const parseFileEpisodeInfo = (
   filename: string,
   pattern: RegExp | null,
 ): SeasonPackFile => {
-  // If no pattern provided, try all default patterns
+  // If no pattern is provided, try all default patterns.
   const patternsToTry = pattern ? [pattern] : patterns.defaultPatterns;
 
-  for (const p of patternsToTry) {
-    const match = filename.match(p);
+  for (const currentPattern of patternsToTry) {
+    const match = filename.match(currentPattern);
     if (match && match.length === 3) {
-      // Handle season extraction (same logic as resolveEpisodeInfo)
+      // Handle season extraction with the same conventions as episode resolution.
       let seasonNumber = 1;
       if (match[1] === "-") {
         seasonNumber = 1;
@@ -45,7 +46,7 @@ const parseFileEpisodeInfo = (
       }
 
       const episodeNumber = match[2];
-      const paddedSeasonNumber = seasonNumber.toString().padStart(2, '0');
+      const paddedSeasonNumber = seasonNumber.toString().padStart(2, "0");
 
       return {
         name: filename,
@@ -56,66 +57,17 @@ const parseFileEpisodeInfo = (
     }
   }
 
-  // No pattern matched
+  // No pattern matched.
   return {
     name: filename,
-    seasonNumber: '01',
+    seasonNumber: "01",
     episodeNumber: "",
     isValid: false,
   };
 };
 
 /**
- * Get file list from a torrent by downloading its metadata
- * @param magnetLink The magnet link to inspect
- * @returns Promise resolving to object with file names and paths
- */
-const getTorrentFileList = async (
-  magnetLink: string,
-): Promise<{ name: string; path: string }[]> => {
-  return new Promise((resolve, reject) => {
-    const client = new WebTorrent();
-    let resolved = false;
-
-    const timeout = setTimeout(() => {
-      if (!resolved) {
-        client.destroy();
-        reject(new Error("Timeout getting torrent metadata"));
-      }
-    }, 60000); // 1 minute timeout
-
-    try {
-      const torrent = client.add(magnetLink, { path: "/tmp" });
-
-      torrent.on("ready", () => {
-        resolved = true;
-        clearTimeout(timeout);
-        const files = torrent.files.map((file) => ({
-          name: file.name,
-          path: file.path,
-        }));
-        torrent.destroy();
-        client.destroy();
-        resolve(files);
-      });
-
-      torrent.on("error", (error) => {
-        resolved = true;
-        clearTimeout(timeout);
-        client.destroy();
-        reject(error);
-      });
-    } catch (error) {
-      resolved = true;
-      clearTimeout(timeout);
-      client.destroy();
-      reject(error);
-    }
-  });
-};
-
-/**
- * Get all video files recursively from a season folder
+ * Get all video files recursively from a season folder.
  * @param seasonPath Path to the season folder
  * @returns Array of video file names (including subfolder paths)
  */
@@ -132,10 +84,10 @@ const getVideoFilesRecursively = (seasonPath: string): string[] => {
     const stat = fs.statSync(itemPath);
 
     if (stat.isDirectory()) {
-      // Recursively get files from subdirectories
+      // Recursively get files from subdirectories.
       const subFiles = getVideoFilesRecursively(itemPath);
       results.push(...subFiles);
-    } else if (item.endsWith('.mkv') || item.endsWith('.mp4')) {
+    } else if (item.endsWith(".mkv") || item.endsWith(".mp4")) {
       results.push(item);
     }
   }
@@ -144,7 +96,7 @@ const getVideoFilesRecursively = (seasonPath: string): string[] => {
 };
 
 /**
- * Check if any episodes from the season pack are missing
+ * Check if any episodes from the season pack are missing.
  * @param files Parsed files from the season pack
  * @param rootFolderPath Root download path
  * @param animeFolder Anime folder name
@@ -161,18 +113,18 @@ const hasMissingEpisodes = (
     const seasonFolder = `Season ${file.seasonNumber}`;
     const seasonPath = path.join(rootFolderPath, animeFolder, seasonFolder);
 
-    // Get all video files recursively from the season folder
+    // Get all video files recursively from the season folder.
     const existingFiles = getVideoFilesRecursively(seasonPath);
     logger.debug(`Found ${existingFiles.length} existing video files in ${seasonFolder}`);
 
-    // Check if this episode exists
+    // Check if this episode already exists.
     const episodeExists = existingFiles.some((existingFile) => {
-      const normalizedFile = existingFile.replace(/\\/g, '/');
+      const normalizedFile = existingFile.replace(/\\/g, "/");
       return (
         normalizedFile.includes(`E${file.episodeNumber}`) ||
         normalizedFile.includes(`- ${file.episodeNumber}`) ||
-        normalizedFile.includes(`E${file.episodeNumber.padStart(2, '0')}`) ||
-        normalizedFile.includes(`- ${file.episodeNumber.padStart(2, '0')}`)
+        normalizedFile.includes(`E${file.episodeNumber.padStart(2, "0")}`) ||
+        normalizedFile.includes(`- ${file.episodeNumber.padStart(2, "0")}`)
       );
     });
 
@@ -187,7 +139,7 @@ const hasMissingEpisodes = (
 };
 
 /**
- * Download a season pack torrent, selecting only video files to avoid nested folders
+ * Download a season pack torrent, selecting only video files to avoid nested folders.
  * @param client WebTorrent client instance
  * @param multiBar Progress bar instance
  * @param magnetLink Magnet link to download
@@ -200,7 +152,7 @@ const downloadSeasonPackTorrent = async (
   multiBar: cliProgress.MultiBar,
   magnetLink: string,
   outputPath: string,
-  videoFiles: { name: string; path: string }[],
+  videoFiles: TorrentFileInfo[],
   isMultiSeason: boolean = false,
   maxRetries: number = 3,
 ): Promise<void> => {
@@ -240,7 +192,7 @@ const downloadSeasonPackTorrent = async (
               const error = `Torrent metadata timeout for ${torrent.name || "unknown"}`;
               cleanup(error);
             }
-          }, 120000); // 2 minutes timeout for metadata
+          }, 120000);
 
           torrent.on("ready", () => {
             if (!torrent) {
@@ -252,11 +204,11 @@ const downloadSeasonPackTorrent = async (
               timeout = null;
             }
 
-            // Deselect all files first
+            // Deselect all files first.
             torrent.files.forEach((file) => file.deselect());
 
-            // Select only the video files (this prevents downloading nested folders)
-            const videoPaths = new Set(videoFiles.map((f) => f.path));
+            // Select only the video files to avoid downloading nested extras.
+            const videoPaths = new Set(videoFiles.map((file) => file.path));
             torrent.files.forEach((file) => {
               if (videoPaths.has(file.path)) {
                 file.select();
@@ -278,16 +230,15 @@ const downloadSeasonPackTorrent = async (
                   bar = null;
                 }
 
-                // Only flatten files if single-season pack
+                // Only flatten files for single-season packs.
                 if (!isMultiSeason && torrent) {
-                  // Move files from nested folders to the season folder root
                   for (const file of torrent.files) {
-                    // Only process selected video files
+                    // Only process the selected video files.
                     if (videoPaths.has(file.path)) {
                       const currentPath = path.join(outputPath, file.path);
                       const targetPath = path.join(outputPath, file.name);
 
-                      // If file is in a subfolder, move it to the root
+                      // If the file landed in a subfolder, move it to the season root.
                       if (currentPath !== targetPath && fs.existsSync(currentPath)) {
                         await fs.promises.rename(currentPath, targetPath);
                         logger.debug(`Moved ${file.name} to season folder root`);
@@ -295,7 +246,6 @@ const downloadSeasonPackTorrent = async (
                     }
                   }
 
-                  // Clean up empty subdirectories
                   const items = fs.readdirSync(outputPath);
                   for (const item of items) {
                     const itemPath = path.join(outputPath, item);
@@ -304,21 +254,19 @@ const downloadSeasonPackTorrent = async (
                         await fs.promises.rm(itemPath, { recursive: true, force: true });
                         logger.debug(`Removed empty folder: ${item}`);
                       } catch {
-                        // Ignore errors (folder might not be empty)
+                        // Ignore errors for folders that are not empty.
                       }
                     }
                   }
                 } else if (isMultiSeason && torrent) {
-                  // For multi-season packs, check if there's a common root folder to flatten
+                  // For multi-season packs, flatten a single torrent root folder if present.
                   const items = fs.readdirSync(outputPath);
 
-                  // If there's only one item and it's a directory, it's likely a torrent root folder
                   if (items.length === 1 && fs.statSync(path.join(outputPath, items[0])).isDirectory()) {
                     const rootFolder = items[0];
                     const rootFolderPath = path.join(outputPath, rootFolder);
                     logger.debug(`Detected torrent root folder: ${rootFolder}`);
 
-                    // Move all contents from the root folder up one level
                     const contents = fs.readdirSync(rootFolderPath);
                     for (const item of contents) {
                       const sourcePath = path.join(rootFolderPath, item);
@@ -327,7 +275,6 @@ const downloadSeasonPackTorrent = async (
                       logger.debug(`Moved ${item} from torrent root to anime folder`);
                     }
 
-                    // Remove the now-empty root folder
                     await fs.promises.rm(rootFolderPath, { recursive: true, force: true });
                     logger.debug(`Removed torrent root folder: ${rootFolder}`);
                   } else {
@@ -355,127 +302,83 @@ const downloadSeasonPackTorrent = async (
           cleanup(error as Error);
         }
       });
-
-      return; // Success, exit retry loop
+      return;
     } catch (error) {
       lastError = error as Error | string;
-      logger.warn(
-        `Download attempt ${attempt}/${maxRetries} failed: ${
-          error instanceof Error ? error.message : error
-        }`,
-      );
-
+      logger.error(`Season pack download attempt ${attempt}/${maxRetries} failed:`, error);
       if (attempt < maxRetries) {
-        const backoffTime = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
-        logger.info(`Retrying in ${backoffTime}ms...`);
-        await sleep(backoffTime);
+        await sleep(5000);
       }
     }
   }
 
-  // All retries failed
-  throw new Error(
-    `Failed to download after ${maxRetries} attempts: ${
-      lastError instanceof Error ? lastError.message : lastError
-    }`,
-  );
+  // All retries failed.
+  throw lastError ?? new Error("Season pack download failed");
 };
 
 /**
- * Handle downloading season pack torrents
+ * Handle downloading season pack torrents.
  * @param rootFolderPath Root folder for downloads
  * @param anime The download entry (with seasonPack: true)
  * @param downloadTracker Tracker for successful downloads
- * @returns Updated tracker data
+ * @returns Whether the season pack was downloaded
  */
 export const handleSeasonPackDownload = async (
   rootFolderPath: string,
   anime: DownloadEntry,
   downloadTracker: TrackerData[],
-): Promise<TrackerData[]> => {
-  logger.info(`${anime.folder} - checking season pack...`);
-
+): Promise<boolean> => {
   try {
-    // Scrape Nyaa for season pack torrents
+    // Scrape Nyaa for season pack torrents.
     const available = await scrapeNyaaSearchResults(anime);
-
     if (available.length === 0) {
-      logger.info(`${anime.folder} - no season packs found`);
-      return downloadTracker;
+      logger.info(`${anime.folder} - no season pack found`);
+      return false;
     }
 
-    // Get the first (most recent) result
-    const seasonPackTorrent = available[0];
-    logger.debug(`Found season pack: ${seasonPackTorrent.title}`);
+    // Get the first (most recent) result.
+    const selectedTorrent = available[0];
+    logger.info(`${anime.folder} - checking season pack...`);
 
-    // Get file list from the torrent
-    const files = await getTorrentFileList(seasonPackTorrent.magnetLink);
-    logger.debug(`Season pack contains ${files.length} files`);
+    // Get file list from the torrent.
+    const torrentFiles = await getTorrentFileList(selectedTorrent.magnetLink);
 
-    // Filter to only video files
-    const videoFiles = files.filter(
-      (file) => file.name.endsWith('.mkv') || file.name.endsWith('.mp4'),
+    // Filter to only video files.
+    const videoFiles = torrentFiles.filter(
+      (file) => file.name.endsWith(".mkv") || file.name.endsWith(".mp4"),
     );
 
     if (videoFiles.length === 0) {
-      logger.warn(`${anime.folder} - no video files found in season pack`);
-      return downloadTracker;
+      logger.info(`${anime.folder} - no video files found in season pack`);
+      return false;
     }
 
-    // Try to resolve pattern from multiple sample files (some might be movies/OVAs)
-    let enhancedAnime = { ...anime, resolvedPattern: null as RegExp | null };
-    for (const videoFile of videoFiles.slice(0, Math.min(10, videoFiles.length))) {
-      enhancedAnime = resolveAnimePattern(anime, videoFile.name);
-      if (enhancedAnime.resolvedPattern) {
-        logger.debug(`Resolved pattern from: ${videoFile.name}`);
-        break;
-      }
-    }
+    // Try to resolve a pattern from representative sample files.
+    const resolvedPattern = resolveAnimePattern(anime, videoFiles.map((file) => file.name).join("\n")).resolvedPattern;
 
-    // If no pattern found, try to parse all files anyway (some might match default patterns)
-    if (!enhancedAnime.resolvedPattern) {
-      logger.debug(`${anime.folder} - no custom pattern, trying default patterns`);
-      enhancedAnime = { ...anime, resolvedPattern: null };
-    }
-
-    // Parse episode info from each file
+    // Parse episode info from each file.
     const parsedFiles = videoFiles.map((file) =>
-      parseFileEpisodeInfo(file.name, enhancedAnime.resolvedPattern),
+      parseFileEpisodeInfo(file.name, resolvedPattern),
     );
 
-    const validFiles = parsedFiles.filter((f) => f.isValid);
-    logger.debug(`Parsed ${validFiles.length} valid episode files from season pack`);
+    // Detect if this is a multi-season pack or includes non-episode extras.
+    const isMultiSeason =
+      new Set(parsedFiles.filter((file) => file.isValid).map((file) => file.seasonNumber)).size > 1 ||
+      parsedFiles.some((file) => !file.isValid);
 
-    // Detect if this is a multi-season pack or has unparseable files (movies/OVAs)
-    const uniqueSeasons = new Set(validFiles.map((f) => f.seasonNumber));
-    const hasUnparseableFiles = validFiles.length < videoFiles.length;
-    const isMultiSeason = uniqueSeasons.size > 1 || hasUnparseableFiles;
-
-    if (isMultiSeason) {
-      logger.info(`${anime.folder} - detected multi-season pack (${uniqueSeasons.size} seasons, ${videoFiles.length} total files)`);
+    if (!hasMissingEpisodes(parsedFiles, rootFolderPath, anime.folder)) {
+      logger.info(`${anime.folder} - season pack already complete`);
+      return false;
     }
 
-    // Check if we're missing any episodes
-    const needsDownload = hasMissingEpisodes(validFiles, rootFolderPath, anime.folder);
+    // Determine output path based on multi-season detection.
+    const outputPath = isMultiSeason
+      ? path.join(rootFolderPath, anime.folder)
+      : path.join(rootFolderPath, anime.folder, `Season ${parsedFiles[0]?.seasonNumber || "01"}`);
 
-    if (!needsDownload) {
-      logger.info(`${anime.folder} - all episodes already downloaded`);
-      return downloadTracker;
-    }
+    fs.mkdirSync(outputPath, { recursive: true });
 
-    // Determine output path based on multi-season detection
-    let outputPath: string;
-    if (isMultiSeason) {
-      // For multi-season packs, download to anime root and preserve folder structure
-      outputPath = `${rootFolderPath}/${anime.folder}`;
-      logger.info(`${anime.folder} - downloading multi-season pack with ${validFiles.length} episodes`);
-    } else {
-      // For single-season packs, download to specific season folder and flatten
-      const firstValidFile = validFiles[0];
-      const seasonFolder = `Season ${firstValidFile.seasonNumber}`;
-      outputPath = `${rootFolderPath}/${anime.folder}/${seasonFolder}`;
-      logger.info(`${anime.folder} - downloading season pack with ${validFiles.length} episodes`);
-    }
+    logger.info(`${anime.folder} - downloading season pack with ${videoFiles.length} episodes`);
 
     const client = new WebTorrent();
     const multiBar = new cliProgress.MultiBar(
@@ -487,35 +390,31 @@ export const handleSeasonPackDownload = async (
       cliProgress.Presets.shades_classic,
     );
 
-    try {
-      await downloadSeasonPackTorrent(
-        client,
-        multiBar,
-        seasonPackTorrent.magnetLink,
-        outputPath,
-        videoFiles,
-        isMultiSeason,
-      );
+    await downloadSeasonPackTorrent(
+      client,
+      multiBar,
+      selectedTorrent.magnetLink,
+      outputPath,
+      videoFiles,
+      isMultiSeason,
+    );
 
-      multiBar.stop();
-      client.destroy();
+    client.destroy();
+    multiBar.stop();
 
-      logger.info(`${anime.folder} - season pack downloaded successfully`);
+    // Count all video files for multi-season packs, otherwise only parsed episodes.
+    const trackedEpisodes = isMultiSeason
+      ? videoFiles.length
+      : parsedFiles.filter((file) => file.isValid).length;
 
-      // Add to tracker (count all video files for multi-season, only episodes for single)
-      const episodeCount = isMultiSeason ? videoFiles.length : validFiles.length;
-      downloadTracker.push({
-        title: anime.folder,
-        newEpisodes: episodeCount,
-      });
-    } catch (error) {
-      multiBar.stop();
-      client.destroy();
-      throw error;
-    }
+    downloadTracker.push({
+      title: anime.folder,
+      newEpisodes: trackedEpisodes,
+    });
+
+    return true;
   } catch (error) {
-    logger.error(`Error handling season pack for ${anime.folder}:`, error);
+    logger.error(`Error handling season pack download for ${anime.folder}:`, error);
+    return false;
   }
-
-  return downloadTracker;
 };

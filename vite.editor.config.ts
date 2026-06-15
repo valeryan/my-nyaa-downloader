@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename);
 export default defineConfig({
   root: path.resolve(__dirname, "src/editor/client"),
   server: {
-    host: "127.0.0.1",
+    host: "0.0.0.0",
     port: 5173,
     strictPort: true,
     proxy: {
